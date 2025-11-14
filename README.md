@@ -1,8 +1,8 @@
 # Introduction
 
-**Gradient Quality Control (GQC)** is a training paradigm that improves gradient quality by drawing additional samples adaptively, rather than relying on post-facto denoising mechanisms that primarily slow down training
+**Gradient Quality Control (GQC)** is a training paradigm that improves gradient quality by means other than datasource filtering before the gradients ever reach the optimizer. Most of our algorithms do this by drawing additional samples adaptively, rather than relying on post-facto optimizer denoising mechanisms that primarily slow down training
 
-This library provides industrial-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. These wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.
+This library provides research-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. These wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.
 
 # Gradient Quality Control and Adaptive Sampling
 
@@ -19,7 +19,7 @@ Notable outcomes so far showing some strengths and limitations include:
 | 50m model trained on 282m tokens       | 41% improvement in perplexity       |
 | 50m test vs 800m control               | 5% improvement in perplexity at 50m |
 | 50m model tried at various batch sizes | logical batch size largely the same |
-| 50m test model on multiepoch task      | converged to a lower floor          |
+| 50m test model on multiepoch task      | converged to a worse floor          |
 
 No fine tuning has been tested yet. This tends to have much higher sample efficiency, but also may be sensitive to regularization.
 
@@ -56,7 +56,7 @@ for inputs, labels in train_loader:
 In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications.
 
 ```python
-from torch-gqc import OptimizerWrapperGTNS, norm_scheduler_cosine_annealing
+from gradient_quality_control import OptimizerWrapperGTNS, norm_scheduler_cosine_annealing
 
 ...
 
@@ -82,9 +82,55 @@ for inputs, labels in train_loader:
     norm_scheduler.step()
 ```
 
+Excellent logging and console usage is also supported; those using optimizer however should callbacks should consult the more detailed documentation in usage to know how to retrieve the callback returns. Instead, the step function in this library tells us whether the optimizer was stepped by the wrapper, and .statistics returns various statistics suitable for logging or console display.
+
+```python
+from gradient_quality_control import OptimizerWrapperGNTS, norm_scheduler_cosine_annealing
+from tqdm import tqdm
+
+...
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+lr_scheduler = get_warmup_scheduler(optimizer, ...)
+
+# Optimizer wrapper automatically steps when quality is high enough.
+# Attached schedules control the gradient norm threshold.
+optimizer = OptimizerWrapperGNTS(optimizer)
+norm_scheduler = norm_scheduler_cosine_annealing(optimizer, ...)
+
+# Track optimizer step events
+step_batches = []
+num_batches_sampled = []
+
+pbar = tqdm(train_loader, desc="Training")
+
+for inputs, labels in pbar:
+    # Stat draw comes before optimizer step so we do not  
+    # clear num_draws out prematurely.
+    stats = optimizer.statistics()
+
+    # Loss
+    logits = model(inputs)
+    loss = cross_entropy(logits, labels)
+    loss.backward()
+    
+    # Optimization
+    stepped = optimizer.step()
+    lr_scheduler.step()
+    norm_scheduler.step()
+    
+    # Log when optimizer steps
+    if stepped:
+        step_batches.append(stats['batches'])  
+        num_batches_sampled.append(stats['num_draws'])
+    
+    # Update progress bar
+    pbar.set_postfix(stats)
+```
+
 Note that attaching the schedule to the OptimizerWrapperGTNS instead made it set the target gradient norm threshold; under the hood, we draw microbatches until noise cancels out sufficiently to meet that threshold. A cosine annealing from 1.0 to 0.2 is not atypical. This replaces the learning rate schedule by directly conditioning the gradients used to decide the step size instead.
 
-**Important: Norm scheduler warmup should be  inverted from LR warmup**
+**Important: Norm scheduler warmup should be inverted from LR warmup**
 - LR warmup: start low (0.0) → ramp up to peak
 - Norm warmup: start high (example 5.0) → ramp down to target (1.0)
 
