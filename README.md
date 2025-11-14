@@ -155,6 +155,6 @@ See [theory](documents/research/results_and_thoery.md) for a discusson of what t
 
 **Collaboration and Replication**
 
-See the experiments folder at [experiments](experiments) to view the research colabs used in the studies, replicate the results yourself, and draw your own conclusion. The "Budget" series of experiments can be reproduced in under 150$. Please credit this repository and the discussion inside, and switch to the formal paper when it comes out, when extending the results.
+See the experiments folder at [experiments](examples) to view the research colabs used in the studies, replicate the results yourself, and draw your own conclusion. The "Budget" series of experiments can be reproduced in under 150$. Please credit this repository and the discussion inside, and switch to the formal paper when it comes out, when extending the results.
 
 Anyone with compute resources, publication experience, or even work offers are suggested. See [collaboration](documents/research/collaboration.md) for details, and consider it the document kept up to date.

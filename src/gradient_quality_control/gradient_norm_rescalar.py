@@ -73,8 +73,10 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
             wrapper variant, but the return is standardized across all wrapper
             classes
         """
+
         if self.mode == 'global':
-            norm = torch.nn.utils.get_total_norm(self.parameters) + 1e-12
+            grads = [p.grad for p in self.parameters]
+            norm = torch.nn.utils.get_total_norm(grads) + 1e-12
 
         # Main scaling loop
         for parameter in self.parameters:

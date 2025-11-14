@@ -31,9 +31,9 @@ class AbstractOptimizerWrapper(Optimizer):
     def __init__(self, optimizer: Optimizer):
         self.optimizer = optimizer
         self.last_optimizer_result = None
-        self.num_batches = 0
+        self.num_batches = 1 # One batch if we can even invoke the optimizer
         self.num_steps = 0
-        self.num_draws = 1
+        self.num_draws = 1 # One draw because we had to take one batch.
 
         self.parameters = []
         for group in self.optimizer.param_groups:

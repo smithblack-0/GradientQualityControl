@@ -108,7 +108,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
             self._take_batch_step()
             return False
         else:
-            self._cached_gns = self._compute_gns_estimate(self.grad_norms)
+            self._cached_gns = self.compute_gns_estimate(self.grad_norms)
 
         # Check if we should step (computes and caches GNS)
         force_step = self.num_draws >= self.max_draws
