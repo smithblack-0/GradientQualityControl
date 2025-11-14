@@ -82,7 +82,8 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
             True if the optimizer stepped, False if still accumulating gradients.
         """
         optimizer_was_stepped = False
-        current_norm = torch.nn.utils.get_total_norm(self.parameters)/self.num_draws
+        grads = [p.grad for p in self.parameters]
+        current_norm = torch.nn.utils.get_total_norm(grads)/self.num_draws
         if current_norm < self.norm_threshold or self.num_draws >= self.max_draws:
             self._take_optimizer_step(closure)
             optimizer_was_stepped = True
