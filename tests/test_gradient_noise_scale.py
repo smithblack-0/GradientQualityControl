@@ -1,11 +1,13 @@
 """
 Tests for OptimizerWrapperGNS (Gradient Noise Scale controller).
 """
-import unittest
+
 from unittest.mock import Mock
 import torch
 import torch.nn as nn
 import numpy as np
+import pytest
+
 from src.gradient_quality_control.gradient_noise_scale import OptimizerWrapperGNS
 
 
@@ -25,14 +27,14 @@ def create_simple_model():
     return model
 
 
-class TestHelperFunctions(unittest.TestCase):
+class TestHelperFunctions:
     """Test static/pure helper functions atomically."""
 
     def test_compute_gns_identical_norms(self):
         """Identical norms = zero variance = GNS of 0."""
         norms = [1.0, 1.0, 1.0, 1.0]
         result = OptimizerWrapperGNS.compute_gns_estimate(norms)
-        self.assertAlmostEqual(result, 0.0, places=6)
+        assert result == pytest.approx(0.0, rel=1e-6, abs=1e-6)
 
     def test_compute_gns_known_values(self):
         """Verify GNS = var(norms) / mean(norms^2)."""
@@ -40,7 +42,7 @@ class TestHelperFunctions(unittest.TestCase):
         # var = 2/3, mean_squared = 14/3, GNS = 2/14
         expected = 2.0 / 14.0
         result = OptimizerWrapperGNS.compute_gns_estimate(norms)
-        self.assertAlmostEqual(result, expected, places=6)
+        assert result == pytest.approx(expected, rel=1e-6, abs=1e-6)
 
     def test_compute_gns_high_variance(self):
         """Higher variance = higher GNS."""
@@ -50,17 +52,17 @@ class TestHelperFunctions(unittest.TestCase):
         low_gns = OptimizerWrapperGNS.compute_gns_estimate(low_var)
         high_gns = OptimizerWrapperGNS.compute_gns_estimate(high_var)
 
-        self.assertGreater(high_gns, low_gns)
+        assert high_gns > low_gns
 
     def test_attach_grad_norm_hook_adds_hook(self):
         """Hook is attached to parameter."""
         param = nn.Parameter(torch.randn(5))
-        self.assertFalse(hasattr(param, '_has_grad_norm_hook'))
+        assert not hasattr(param, "_has_grad_norm_hook")
 
         OptimizerWrapperGNS._attach_grad_norm_hook(param)
 
-        self.assertTrue(hasattr(param, '_has_grad_norm_hook'))
-        self.assertTrue(param._has_grad_norm_hook)
+        assert hasattr(param, "_has_grad_norm_hook")
+        assert param._has_grad_norm_hook
 
     def test_attach_grad_norm_hook_idempotent(self):
         """Attaching hook twice doesn't add multiple hooks."""
@@ -70,7 +72,7 @@ class TestHelperFunctions(unittest.TestCase):
         OptimizerWrapperGNS._attach_grad_norm_hook(param)
 
         # Should still only have one hook
-        self.assertTrue(param._has_grad_norm_hook)
+        assert param._has_grad_norm_hook
 
     def test_get_independent_grad_norms(self):
         """Computes total norm from last_gradient_norm attributes."""
@@ -81,17 +83,17 @@ class TestHelperFunctions(unittest.TestCase):
 
         # Total norm = sqrt(3^2 + 4^2 + 0^2) = 5.0
         result = OptimizerWrapperGNS._get_independent_grad_norms(params)
-        self.assertAlmostEqual(result, 5.0, places=5)
+        assert result == pytest.approx(5.0, rel=1e-5, abs=1e-5)
 
     def test_get_independent_grad_norms_raises_without_attribute(self):
         """Raises error if parameter missing last_gradient_norm."""
         params = [nn.Parameter(torch.randn(5))]
 
-        with self.assertRaises(RuntimeError):
+        with pytest.raises(RuntimeError):
             OptimizerWrapperGNS._get_independent_grad_norms(params)
 
 
-class TestControllerBehavior(unittest.TestCase):
+class TestControllerBehavior:
     """Test controller stepping behavior with real backward passes."""
 
     def test_does_not_step_with_one_sample(self):
@@ -107,7 +109,7 @@ class TestControllerBehavior(unittest.TestCase):
 
         result = wrapper.step()
 
-        self.assertFalse(result)
+        assert not result
 
     def test_steps_with_consistent_gradients(self):
         """Consistent gradients (low GNS) should trigger step."""
@@ -127,30 +129,35 @@ class TestControllerBehavior(unittest.TestCase):
                 break
 
         # Should step after 2nd sample (GNS computable, criterion met)
-        self.assertIsNotNone(stepped_at)
-        self.assertGreaterEqual(stepped_at, 1)  # Need at least 2 samples
+        assert stepped_at is not None
+        assert stepped_at >= 1  # Need at least 2 samples
 
     def test_force_step_at_max_draws(self):
         """Steps when max_draws reached."""
         model = create_simple_model()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        wrapper = OptimizerWrapperGNS(optimizer, noise_multiplier=0.0, max_batch_draws=3)
+        wrapper = OptimizerWrapperGNS(
+            optimizer, noise_multiplier=0.0, max_batch_draws=3
+        )
 
         # noise_multiplier=0 means criterion never met, but max_draws forces step
-        for i in range(3):
+        result = None
+        for _ in range(3):
             optimizer.zero_grad()
             x = torch.randn(1, 10)  # Different input each time
             loss = model(x).sum()
             loss.backward()
             result = wrapper.step()
 
-        self.assertTrue(result)
+        assert result is True
 
     def test_returns_false_while_accumulating(self):
         """Returns False when still accumulating."""
         model = create_simple_model()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        wrapper = OptimizerWrapperGNS(optimizer, noise_multiplier=0.0, max_batch_draws=10)
+        wrapper = OptimizerWrapperGNS(
+            optimizer, noise_multiplier=0.0, max_batch_draws=10
+        )
 
         optimizer.zero_grad()
         x = torch.randn(1, 10)
@@ -158,10 +165,10 @@ class TestControllerBehavior(unittest.TestCase):
         loss.backward()
         result = wrapper.step()
 
-        self.assertFalse(result)
+        assert result is False
 
 
-class TestStatistics(unittest.TestCase):
+class TestStatistics:
     """Test statistics contract."""
 
     def test_statistics_contains_required_keys(self):
@@ -169,19 +176,19 @@ class TestStatistics(unittest.TestCase):
         wrapper = OptimizerWrapperGNS(mock_opt, noise_multiplier=0.5)
         stats = wrapper.statistics()
 
-        self.assertIn('noise_multiplier', stats)
-        self.assertIn('estimated_gns', stats)
-        self.assertIn('batches', stats)
-        self.assertIn('steps', stats)
-        self.assertIn('num_draws', stats)
+        assert "noise_multiplier" in stats
+        assert "estimated_gns" in stats
+        assert "batches" in stats
+        assert "steps" in stats
+        assert "num_draws" in stats
 
     def test_noise_multiplier_reflected_in_statistics(self):
         mock_opt, _ = create_mock_optimizer()
         wrapper = OptimizerWrapperGNS(mock_opt, noise_multiplier=0.75)
         stats = wrapper.statistics()
 
-        self.assertEqual(stats['noise_multiplier'], 0.75)
+        assert stats["noise_multiplier"] == 0.75
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == "__main__":
+    pytest.main([__file__])

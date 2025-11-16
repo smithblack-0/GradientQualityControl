@@ -1,73 +1,77 @@
 """
 Tests for OptimizerWrapperGNTS (Gradient Norm Threshold Scheduler).
 """
-import unittest
+
 from unittest.mock import Mock
 import torch
 import torch.nn as nn
-from src.gradient_quality_control.gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
+import pytest
+
+from src.gradient_quality_control.gradient_norm_threshold_scheduler import (
+    OptimizerWrapperGNTS,
+)
 
 
 def create_mock_optimizer(num_params=3, param_shape=(10,)):
     """Create mock optimizer with real parameters."""
     params = [nn.Parameter(torch.randn(param_shape)) for _ in range(num_params)]
     mock_opt = Mock()
-    mock_opt.param_groups = [{'params': params}]
+    mock_opt.param_groups = [{"params": params}]
     mock_opt.step = Mock(return_value=None)
     mock_opt.zero_grad = Mock()
     return mock_opt, params
 
 
-class TestNormThresholdProperty(unittest.TestCase):
+class TestNormThresholdProperty:
     """Test norm_threshold property behavior."""
 
     def test_norm_threshold_reads_from_param_groups(self):
         mock_opt, _ = create_mock_optimizer()
         wrapper = OptimizerWrapperGNTS(mock_opt)
-        wrapper.param_groups[0]['lr'] = 5.0
+        wrapper.param_groups[0]["lr"] = 5.0
 
-        self.assertEqual(wrapper.norm_threshold, 5.0)
+        assert wrapper.norm_threshold == 5.0
 
     def test_norm_threshold_defaults_to_one(self):
         mock_opt, _ = create_mock_optimizer()
         wrapper = OptimizerWrapperGNTS(mock_opt)
 
-        self.assertEqual(wrapper.norm_threshold, 1.0)
+        assert wrapper.norm_threshold == 1.0
 
 
-class TestControllerBehavior(unittest.TestCase):
+class TestControllerBehavior:
     """Test stepping behavior based on gradient norm threshold."""
 
     def test_steps_when_norm_below_threshold(self):
         mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(4,))
         wrapper = OptimizerWrapperGNTS(mock_opt)
-        wrapper.param_groups[0]['lr'] = 10.0  # High threshold
+        wrapper.param_groups[0]["lr"] = 10.0  # High threshold
 
         # Small gradient norm
         params[0].grad = torch.tensor([1.0, 0.0, 0.0, 0.0])
 
         result = wrapper.step()
 
-        self.assertTrue(result)
+        assert result is True
         mock_opt.step.assert_called_once()
 
     def test_accumulates_when_norm_above_threshold(self):
         mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(4,))
         wrapper = OptimizerWrapperGNTS(mock_opt)
-        wrapper.param_groups[0]['lr'] = 0.1  # Low threshold
+        wrapper.param_groups[0]["lr"] = 0.1  # Low threshold
 
         # Large gradient norm
         params[0].grad = torch.tensor([10.0, 10.0, 10.0, 10.0])
 
         result = wrapper.step()
 
-        self.assertFalse(result)
+        assert result is False
         mock_opt.step.assert_not_called()
 
     def test_force_steps_at_max_draws(self):
         mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(4,))
         wrapper = OptimizerWrapperGNTS(mock_opt, max_batch_draws=3)
-        wrapper.param_groups[0]['lr'] = 0.001  # Very low threshold, never met
+        wrapper.param_groups[0]["lr"] = 0.001  # Very low threshold, never met
 
         # Large gradient that won't meet threshold
         params[0].grad = torch.tensor([100.0, 100.0, 100.0, 100.0])
@@ -77,20 +81,20 @@ class TestControllerBehavior(unittest.TestCase):
         wrapper.step()  # 2nd
         result = wrapper.step()  # 3rd = max_draws, force step
 
-        self.assertTrue(result)
+        assert result is True
         mock_opt.step.assert_called_once()
 
     def test_gradient_accumulation_reduces_norm(self):
         mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(2,))
         wrapper = OptimizerWrapperGNTS(mock_opt)
-        wrapper.param_groups[0]['lr'] = 5.0  # Threshold
+        wrapper.param_groups[0]["lr"] = 5.0  # Threshold
 
         # Initial gradient with high norm
         params[0].grad = torch.tensor([6.0, 8.0])  # norm = 10
 
         # First step: norm=10 > 5, accumulate
         result1 = wrapper.step()
-        self.assertFalse(result1)
+        assert result1 is False
 
         # Add more gradients (they accumulate)
         # After averaging, norm should decrease
@@ -98,35 +102,35 @@ class TestControllerBehavior(unittest.TestCase):
 
         # Second step: norm=15/2=7.5 > 5, still accumulate
         result2 = wrapper.step()
-        self.assertFalse(result2)
+        assert result2 is False
 
         # More accumulation
         params[0].grad = torch.tensor([12.0, 16.0])  # accumulated sum
 
         # Third step: norm=20/3=6.67 > 5, still accumulate
         result3 = wrapper.step()
-        self.assertFalse(result3)
+        assert result3 is False
 
         # Keep going
         params[0].grad = torch.tensor([15.0, 20.0])  # accumulated sum
 
         # Fourth step: norm=25/4=6.25 > 5, still accumulate
         result4 = wrapper.step()
-        self.assertFalse(result4)
+        assert result4 is False
 
         # Finally
         params[0].grad = torch.tensor([18.0, 24.0])  # accumulated sum
 
         # Fifth step: norm=30/5=6 > 5, still accumulate
         result5 = wrapper.step()
-        self.assertFalse(result5)
+        assert result5 is False
 
         # Add smaller gradient contribution
         params[0].grad = torch.tensor([20.0, 26.0])  # accumulated sum
 
         # Sixth step: norm ~ 32.8/6 ~ 5.47 > 5, still not quite
         result6 = wrapper.step()
-        self.assertFalse(result6)
+        assert result6 is False
 
         # Even smaller
         params[0].grad = torch.tensor([21.0, 28.0])  # accumulated sum
@@ -136,7 +140,7 @@ class TestControllerBehavior(unittest.TestCase):
         params[0].grad = torch.tensor([21.0, 27.0])  # norm ~ 34.2/7 ~ 4.9 < 5
 
         result7 = wrapper.step()
-        self.assertTrue(result7)
+        assert result7 is True
 
     def test_works_with_real_scheduler(self):
         """Can attach actual PyTorch scheduler."""
@@ -148,9 +152,10 @@ class TestControllerBehavior(unittest.TestCase):
         initial = wrapper.norm_threshold
         scheduler.step()
 
-        self.assertAlmostEqual(wrapper.norm_threshold, initial * 0.5)
+        assert wrapper.norm_threshold == pytest.approx(initial * 0.5)
 
-class TestStatistics(unittest.TestCase):
+
+class TestStatistics:
     """Test statistics contract."""
 
     def test_statistics_contains_required_keys(self):
@@ -158,19 +163,19 @@ class TestStatistics(unittest.TestCase):
         wrapper = OptimizerWrapperGNTS(mock_opt)
         stats = wrapper.statistics()
 
-        self.assertIn('norm_threshold', stats)
-        self.assertIn('batches', stats)
-        self.assertIn('steps', stats)
-        self.assertIn('num_draws', stats)
+        assert "norm_threshold" in stats
+        assert "batches" in stats
+        assert "steps" in stats
+        assert "num_draws" in stats
 
     def test_norm_threshold_reflected_in_statistics(self):
         mock_opt, _ = create_mock_optimizer()
         wrapper = OptimizerWrapperGNTS(mock_opt)
-        wrapper.param_groups[0]['lr'] = 7.5
+        wrapper.param_groups[0]["lr"] = 7.5
         stats = wrapper.statistics()
 
-        self.assertEqual(stats['norm_threshold'], 7.5)
+        assert stats["norm_threshold"] == 7.5
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == "__main__":
+    pytest.main([__file__])
