@@ -70,6 +70,6 @@ class AbstractOptimizerWrapper(Optimizer):
                 "steps" : self.num_steps,
                 "num_draws" : self.num_draws,}
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         """Route everything not explicitly set  to the underlying optimizer."""
         return getattr(self.optimizer, name)

@@ -157,7 +157,7 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
             confidence=confidence,
             df=len(test_samples) - 1,
             loc=mean,
-            scale=stats.sem(test_samples)
+            scale=stats.sem(test_samples) + 1e-12
         )
 
         # Check if CI fits within tolerance band
