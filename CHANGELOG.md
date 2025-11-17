@@ -1,8 +1,14 @@
 # Changelog
 
-## o.7.3
+## 0.7.2 
 
-CD/CI integration publication attempt. Lets see if it pushes it to pypi
+Continous deployment YAML pushes. System should now publish when a pull request is accepted with the release tag.
+
+## 0.7.2
+
+- Modified ruff, black. 
+- Included working CI/CD including workflow modifications
+- -Added format_code.py root script to format files automatically. 
 
 ## 0.7.1 
 
