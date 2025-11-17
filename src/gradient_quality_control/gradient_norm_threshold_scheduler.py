@@ -37,7 +37,11 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     def norm_threshold(self):
         return self.param_groups[0]["lr"]
 
-    def __init__(self, optimizer: torch.optim.Optimizer, max_batch_draws: int = 64):
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        max_batch_draws: int = 64,
+    ):
         """
         Initialize the GNTS wrapper.
 
