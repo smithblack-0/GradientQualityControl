@@ -6,9 +6,11 @@ logical batch sizes and provides some significant gradient noise
 cleaning too.
 """
 
+from typing import Any, Callable, Dict, Optional
+
 import torch
+
 from .base import AbstractOptimizerWrapper
-from typing import Dict, Any, Optional, Callable
 
 
 class OptimizerWrapperGNTS(AbstractOptimizerWrapper):

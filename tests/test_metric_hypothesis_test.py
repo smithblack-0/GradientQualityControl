@@ -3,9 +3,10 @@ Tests for OptimizerWrapperMHT (Metric Hypothesis Test controller).
 """
 
 from unittest.mock import Mock
+
+import pytest
 import torch
 import torch.nn as nn
-import pytest
 
 from src.gradient_quality_control.metric_hypothesis_test import OptimizerWrapperMHT
 

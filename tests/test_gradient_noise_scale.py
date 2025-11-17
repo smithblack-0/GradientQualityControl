@@ -3,10 +3,10 @@ Tests for OptimizerWrapperGNS (Gradient Noise Scale controller).
 """
 
 from unittest.mock import Mock
+
+import pytest
 import torch
 import torch.nn as nn
-import numpy as np
-import pytest
 
 from src.gradient_quality_control.gradient_noise_scale import OptimizerWrapperGNS
 

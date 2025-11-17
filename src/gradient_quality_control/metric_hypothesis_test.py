@@ -2,11 +2,13 @@
 Metric-based hypothesis test controller for adaptive gradient accumulation.
 """
 
-import torch
-from .base import AbstractOptimizerWrapper
-from typing import Dict, Any, Optional, Callable, List
+from typing import Any, Callable, Dict, List, Optional
+
 import numpy as np
+import torch
 from scipy import stats
+
+from .base import AbstractOptimizerWrapper
 
 
 class OptimizerWrapperMHT(AbstractOptimizerWrapper):

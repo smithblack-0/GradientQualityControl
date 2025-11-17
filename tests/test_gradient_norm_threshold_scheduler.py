@@ -3,9 +3,10 @@ Tests for OptimizerWrapperGNTS (Gradient Norm Threshold Scheduler).
 """
 
 from unittest.mock import Mock
+
+import pytest
 import torch
 import torch.nn as nn
-import pytest
 
 from src.gradient_quality_control.gradient_norm_threshold_scheduler import (
     OptimizerWrapperGNTS,
