@@ -1,0 +1,65 @@
+name: Validate Release
+
+on:
+  workflow_call:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Get version from pyproject.toml
+      id: get_version
+      run: |
+        VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Found version: $VERSION"
+    
+    - name: Validate semver format
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "Version '$VERSION' is not valid semver (X.Y.Z)"
+          exit 1
+        fi
+        echo "Version format valid: $VERSION"
+    
+    - name: Check CHANGELOG has version entry
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        if ! grep -q "## $VERSION\|## \[$VERSION\]" CHANGELOG.md; then
+          echo "CHANGELOG.md missing entry for version $VERSION"
+          exit 1
+        fi
+        echo "CHANGELOG entry found for $VERSION"
+    
+    - name: Check version is greater than PyPI release
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        
+        # Get current PyPI version (returns empty if package doesn't exist yet)
+        PYPI_VERSION=$(curl -s https://pypi.org/pypi/torch-gqc/json 2>/dev/null | python -c "import sys, json; print(json.load(sys.stdin).get('info', {}).get('version', '0.0.0'))" 2>/dev/null || echo "0.0.0")
+        
+        echo "Current PyPI version: $PYPI_VERSION"
+        echo "New version: $VERSION"
+        
+        # Compare versions
+        python << EOF
+        def parse_version(v):
+            return tuple(map(int, v.split('.')))
+        
+        current = parse_version("$PYPI_VERSION")
+        new = parse_version("$VERSION")
+        
+        if new <= current:
+            print(f"New version {new} must be greater than PyPI version {current}")
+            exit(1)
+        
+        print(f"Version check passed: {new} > {current}")
+        EOF

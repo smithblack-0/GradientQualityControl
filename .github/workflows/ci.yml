@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
   pull_request:
-    branches: [master, main]
+    branches: [master]
 
 jobs:
   test:
@@ -35,3 +35,8 @@ jobs:
       run: |
         black --check src/ tests/
         ruff check src/ tests/
+
+  validate-release:
+    if: contains(github.event.pull_request.labels.*.name, 'Release')
+    needs: test
+    uses: ./.github/workflows/validate-release.yml

@@ -5,3 +5,5 @@ from .gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
 from .metric_hypothesis_test import OptimizerWrapperMHT
 from .scheduled_batch_controller import OptimizerWrapperSBC
 from .scheduling_utils import NormWarmupScheduler
+from importlib.metadata import version
+__version__ = version("torch-gqc")
