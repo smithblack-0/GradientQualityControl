@@ -3,9 +3,11 @@ Tests for NormWarmupScheduler.
 """
 
 import unittest
+
 import torch
 import torch.nn as nn
-from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, LRScheduler
+from torch.optim.lr_scheduler import CosineAnnealingLR, LRScheduler, StepLR
+
 from src.gradient_quality_control.scheduling_utils import NormWarmupScheduler
 
 

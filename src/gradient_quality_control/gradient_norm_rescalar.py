@@ -3,9 +3,11 @@ The Gradient Norm Scaler performs direct gradient rescaling to achieve
 a target gradient norm, either globally or per-parameter independently.
 """
 
+from typing import Any, Callable, Dict, Literal, Optional
+
 import torch
+
 from .base import AbstractOptimizerWrapper
-from typing import Literal, Dict, Any, Callable, Optional
 
 
 class OptimizerWrapperGNR(AbstractOptimizerWrapper):

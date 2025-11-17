@@ -2,9 +2,11 @@
 Scheduled Batch Controller for fixed gradient accumulation based on a schedule.
 """
 
+from typing import Any, Callable, Dict, Optional
+
 import torch
+
 from .base import AbstractOptimizerWrapper
-from typing import Dict, Any, Optional, Callable
 
 
 class OptimizerWrapperSBC(AbstractOptimizerWrapper):

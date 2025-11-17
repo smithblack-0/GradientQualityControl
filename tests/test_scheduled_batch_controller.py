@@ -4,8 +4,10 @@ Tests for OptimizerWrapperSBC (Scheduled Batch Controller).
 
 import unittest
 from unittest.mock import Mock
+
 import torch
 import torch.nn as nn
+
 from src.gradient_quality_control.scheduled_batch_controller import OptimizerWrapperSBC
 
 

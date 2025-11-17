@@ -6,9 +6,9 @@ mean gradients for optimization. amd logging and reporting
 of statistics.
 """
 
+from typing import Any, Callable, Dict, Optional
+
 from torch.optim import Optimizer
-from torch import nn
-from typing import Callable, Any, Optional, Dict, List
 
 
 class AbstractOptimizerWrapper(Optimizer):

@@ -4,9 +4,10 @@ Focus on external behavioral contracts.
 """
 
 from unittest.mock import Mock
+
+import pytest
 import torch
 import torch.nn as nn
-import pytest
 
 from src.gradient_quality_control.base import AbstractOptimizerWrapper
 

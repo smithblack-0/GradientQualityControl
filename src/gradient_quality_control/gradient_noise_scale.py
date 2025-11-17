@@ -2,11 +2,13 @@
 Gradient Noise Scale controller for adaptive gradient accumulation.
 """
 
+from typing import Any, Callable, Dict, List, Optional
+
+import numpy as np
 import torch
 from torch import nn
+
 from .base import AbstractOptimizerWrapper
-from typing import Dict, Any, Optional, Callable, List
-import numpy as np
 
 
 class OptimizerWrapperGNS(AbstractOptimizerWrapper):
