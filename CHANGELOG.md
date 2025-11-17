@@ -1,5 +1,9 @@
 # Changelog
 
+## o.7.3
+
+CD/CI integration publication attempt. Lets see if it pushes it to pypi
+
 ## 0.7.1 
 
 - Included CD
