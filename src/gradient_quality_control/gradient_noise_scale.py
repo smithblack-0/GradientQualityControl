@@ -81,7 +81,10 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
 
         return torch.stack(norms).norm().item()
 
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on GNS criterion.
 

@@ -58,7 +58,11 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
 
         # Note: self.parameters is constructed in base class.
 
-    def step(self, metric: float, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        metric: float,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on statistical confidence in metric estimate.
 
@@ -114,7 +118,10 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
 
     @staticmethod
     def _is_null_hypothesis_rejected(
-        metrics: List[float], running_avg: float, confidence: float, error_tolerance: float
+        metrics: List[float],
+        running_avg: float,
+        confidence: float,
+        error_tolerance: float,
     ) -> bool:
         """
         Test if confidence interval fits within error tolerance band.

@@ -36,7 +36,9 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     """
 
     def __init__(
-        self, optimizer: torch.optim.Optimizer, mode: Literal["global", "independent"] = "global"
+        self,
+        optimizer: torch.optim.Optimizer,
+        mode: Literal["global", "independent"] = "global",
     ):
         super().__init__(optimizer)
 
@@ -55,7 +57,10 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         """Current target norm from scheduler."""
         return self.param_groups[0]["lr"]
 
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Scale gradients to target norm and step the optimizer.
 

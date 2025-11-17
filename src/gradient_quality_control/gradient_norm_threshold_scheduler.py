@@ -62,7 +62,10 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 
         # Note: self.parameters is constructed in base class.
 
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on gradient quality.
 
