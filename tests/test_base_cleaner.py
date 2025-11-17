@@ -13,6 +13,7 @@ from src.gradient_quality_control.base import AbstractOptimizerWrapper
 
 class ConcreteWrapper(AbstractOptimizerWrapper):
     """Minimal concrete implementation for testing base class."""
+
     def step(self):
         pass
 
@@ -24,7 +25,7 @@ def create_mock_optimizer(num_params=3, param_shape=(10,)):
     """Create mock optimizer with real parameters for testing."""
     params = [nn.Parameter(torch.randn(param_shape)) for _ in range(num_params)]
     mock_opt = Mock()
-    mock_opt.param_groups = [{'params': params}]
+    mock_opt.param_groups = [{"params": params}]
     mock_opt.step = Mock(return_value=None)
     mock_opt.zero_grad = Mock()
     return mock_opt, params
@@ -33,6 +34,7 @@ def create_mock_optimizer(num_params=3, param_shape=(10,)):
 # ---------------------------------------------------------------------------
 # Passthrough Tests
 # ---------------------------------------------------------------------------
+
 
 def test_optimizer_step_called():
     mock_opt, _ = create_mock_optimizer()
@@ -75,6 +77,7 @@ def test_unknown_attributes_routed_to_optimizer():
 # Gradient Normalization
 # ---------------------------------------------------------------------------
 
+
 def test_gradients_averaged_by_draw_count():
     """After accumulating draws, gradients divided by num_draws."""
     mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(4,))
@@ -112,32 +115,34 @@ def test_none_gradients_skipped():
 # Statistics Contract
 # ---------------------------------------------------------------------------
 
+
 def test_statistics_has_required_keys():
     mock_opt, _ = create_mock_optimizer()
     wrapper = ConcreteWrapper(mock_opt)
     stats = wrapper._get_base_statistics()
 
-    assert 'batches' in stats
-    assert 'steps' in stats
-    assert 'num_draws' in stats
+    assert "batches" in stats
+    assert "steps" in stats
+    assert "num_draws" in stats
 
 
 def test_batch_step_increments_batches():
     mock_opt, _ = create_mock_optimizer()
     wrapper = ConcreteWrapper(mock_opt)
-    initial = wrapper._get_base_statistics()['batches']
+    initial = wrapper._get_base_statistics()["batches"]
     wrapper._take_batch_step()
-    after = wrapper._get_base_statistics()['batches']
+    after = wrapper._get_base_statistics()["batches"]
     assert after == initial + 1
 
 
 def test_optimizer_step_increments_steps():
     mock_opt, _ = create_mock_optimizer()
     wrapper = ConcreteWrapper(mock_opt)
-    initial = wrapper._get_base_statistics()['steps']
+    initial = wrapper._get_base_statistics()["steps"]
     wrapper._take_optimizer_step()
-    after = wrapper._get_base_statistics()['steps']
+    after = wrapper._get_base_statistics()["steps"]
     assert after == initial + 1
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

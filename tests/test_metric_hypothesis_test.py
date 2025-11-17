@@ -96,9 +96,7 @@ class TestControllerBehavior:
     def test_steps_with_consistent_metrics(self):
         """Consistent metrics = tight CI = step."""
         mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(
-            mock_opt, confidence=0.98, error_tolerance=0.03
-        )
+        wrapper = OptimizerWrapperMHT(mock_opt, confidence=0.98, error_tolerance=0.03)
 
         # Feed consistent metrics
         stepped = False
@@ -162,9 +160,7 @@ class TestControllerBehavior:
     def test_ema_updates_after_step(self):
         """Running average updates when optimizer steps."""
         mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(
-            mock_opt, confidence=0.98, error_tolerance=0.5, ema_alpha=0.1
-        )
+        wrapper = OptimizerWrapperMHT(mock_opt, confidence=0.98, error_tolerance=0.5, ema_alpha=0.1)
 
         # Feed metrics until step
         for _ in range(20):

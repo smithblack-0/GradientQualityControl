@@ -5,9 +5,11 @@ the optimizer when the norm is below a threshold. It autotunes
 logical batch sizes and provides some significant gradient noise
 cleaning too.
 """
+
 import torch
 from .base import AbstractOptimizerWrapper
 from typing import Dict, Any, Optional, Callable
+
 
 class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     """
@@ -31,11 +33,13 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 
     @property
     def norm_threshold(self):
-        return self.param_groups[0]['lr']
+        return self.param_groups[0]["lr"]
 
-    def __init__(self,
-                 optimizer: torch.optim.Optimizer,
-                 max_batch_draws: int = 64):
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        max_batch_draws: int = 64,
+    ):
         """
         Initialize the GNTS wrapper.
 
@@ -60,8 +64,10 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 
         # Note: self.parameters is constructed in base class.
 
-
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on gradient quality.
 
@@ -83,14 +89,14 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         """
         optimizer_was_stepped = False
         grads = [p.grad for p in self.parameters]
-        current_norm = torch.nn.utils.get_total_norm(grads)/self.num_draws
+        current_norm = torch.nn.utils.get_total_norm(grads) / self.num_draws
         if current_norm < self.norm_threshold or self.num_draws >= self.max_draws:
             self._take_optimizer_step(closure)
             optimizer_was_stepped = True
         self._take_batch_step()
         return optimizer_was_stepped
 
-    def statistics(self)->Dict[str, Any]:
+    def statistics(self) -> Dict[str, Any]:
         """
         Return simple runtime statistics for inspection or logging.
 
@@ -114,7 +120,7 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     def __repr__(self):
         return (
             f"<OptimizerWrapperGNTS: "
-            f"batches={self.num_batches}, " 
+            f"batches={self.num_batches}, "
             f"steps={self.num_steps}, "
             f"core={type(self.optimizer).__name__}>"
         )

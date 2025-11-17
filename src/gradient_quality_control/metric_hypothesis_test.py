@@ -1,6 +1,7 @@
 """
 Metric-based hypothesis test controller for adaptive gradient accumulation.
 """
+
 import torch
 from .base import AbstractOptimizerWrapper
 from typing import Dict, Any, Optional, Callable, List
@@ -35,12 +36,12 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
     """
 
     def __init__(
-            self,
-            optimizer: torch.optim.Optimizer,
-            confidence: float = 0.98,
-            error_tolerance: float = 0.03,
-            ema_alpha: float = 0.01,
-            max_batch_draws: int = 64
+        self,
+        optimizer: torch.optim.Optimizer,
+        confidence: float = 0.98,
+        error_tolerance: float = 0.03,
+        ema_alpha: float = 0.01,
+        max_batch_draws: int = 64,
     ):
         super().__init__(optimizer)
 
@@ -55,12 +56,11 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
 
         # Note: self.parameters is constructed in base class.
 
-
-    def step(self,
-             metric: float,
-             closure: Optional[Callable[[], Any]] = None
-             ) -> bool:
-
+    def step(
+        self,
+        metric: float,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on statistical confidence in metric estimate.
 
@@ -90,10 +90,12 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
 
         # Check if we should step
         force_step = self.num_draws >= self.max_draws
-        alternative_hypothesis_accepted = self._is_null_hypothesis_rejected(self.current_stage_metrics,
-                                                                            self.running_avg_metric,
-                                                                            self.confidence,
-                                                                            self.error_tolerance)
+        alternative_hypothesis_accepted = self._is_null_hypothesis_rejected(
+            self.current_stage_metrics,
+            self.running_avg_metric,
+            self.confidence,
+            self.error_tolerance,
+        )
         will_step_optimizer = alternative_hypothesis_accepted or force_step
 
         # Handle optimizer steps.
@@ -104,8 +106,7 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
             # Update running average with mean of current stage
             stage_mean = np.mean(self.current_stage_metrics)
             self.running_avg_metric = (
-                    self.ema_alpha * stage_mean +
-                    (1 - self.ema_alpha) * self.running_avg_metric
+                self.ema_alpha * stage_mean + (1 - self.ema_alpha) * self.running_avg_metric
             )
 
             # Reset accumulation state
@@ -115,10 +116,10 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
 
     @staticmethod
     def _is_null_hypothesis_rejected(
-            metrics: List[float],
-            running_avg: float,
-            confidence: float,
-            error_tolerance: float
+        metrics: List[float],
+        running_avg: float,
+        confidence: float,
+        error_tolerance: float,
     ) -> bool:
         """
         Test if confidence interval fits within error tolerance band.
@@ -157,7 +158,7 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
             confidence=confidence,
             df=len(test_samples) - 1,
             loc=mean,
-            scale=stats.sem(test_samples) + 1e-12
+            scale=stats.sem(test_samples) + 1e-12,
         )
 
         # Check if CI fits within tolerance band
@@ -170,8 +171,7 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
     def zero_grad(self):
         """Not needed - use step() method with metric parameter."""
         raise NotImplementedError(
-            "MHT manages gradients internally. "
-            "Call step(metric=...) instead of zero_grad()."
+            "MHT manages gradients internally. " "Call step(metric=...) instead of zero_grad()."
         )
 
     def statistics(self) -> Dict[str, Any]:

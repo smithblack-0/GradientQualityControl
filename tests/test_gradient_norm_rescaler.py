@@ -87,7 +87,7 @@ class TestIndependentModeScaling:
         wrapper.param_groups[0]["lr"] = 1.0  # Target norm
 
         # Different norms for each parameter
-        params[0].grad = torch.tensor([3.0, 4.0, 0.0])   # norm = 5
+        params[0].grad = torch.tensor([3.0, 4.0, 0.0])  # norm = 5
         params[1].grad = torch.tensor([0.0, 0.0, 10.0])  # norm = 10
 
         wrapper.step()

@@ -2,6 +2,7 @@
 The Gradient Norm Scaler performs direct gradient rescaling to achieve
 a target gradient norm, either globally or per-parameter independently.
 """
+
 import torch
 from .base import AbstractOptimizerWrapper
 from typing import Literal, Dict, Any, Callable, Optional
@@ -35,11 +36,11 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
-        mode: Literal['global', 'independent'] = 'global'
+        mode: Literal["global", "independent"] = "global",
     ):
         super().__init__(optimizer)
 
-        if mode not in ('global', 'independent'):
+        if mode not in ("global", "independent"):
             raise ValueError(f"mode must be 'global' or 'independent', got {mode}")
 
         self.mode = mode
@@ -52,9 +53,12 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     @property
     def target_norm(self) -> float:
         """Current target norm from scheduler."""
-        return self.param_groups[0]['lr']
+        return self.param_groups[0]["lr"]
 
-    def step(self, closure: Optional[Callable[[], Any]] =None)->bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Scale gradients to target norm and step the optimizer.
 
@@ -74,7 +78,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
             classes
         """
 
-        if self.mode == 'global':
+        if self.mode == "global":
             grads = [p.grad for p in self.parameters]
             norm = torch.nn.utils.get_total_norm(grads) + 1e-12
 
@@ -84,11 +88,11 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
                 continue
 
             # Handle indepedent vs global rescaling
-            if self.mode == 'global':
-                parameter.grad *= self.target_norm/norm
+            if self.mode == "global":
+                parameter.grad *= self.target_norm / norm
             else:  # independent
                 norm = parameter.grad.norm() + 1e-12
-                parameter.grad *= self.target_norm/norm
+                parameter.grad *= self.target_norm / norm
 
         # Step underlying optimizer
         self._take_optimizer_step(closure)
@@ -112,8 +116,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     def zero_grad(self):
         """Not needed - gradients cleared automatically in step()."""
         raise NotImplementedError(
-            "GNS automatically clears gradients in step(). "
-            "Do not call zero_grad() manually."
+            "GNS automatically clears gradients in step(). " "Do not call zero_grad() manually."
         )
 
     def __repr__(self):

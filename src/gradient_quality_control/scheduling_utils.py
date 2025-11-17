@@ -4,8 +4,13 @@ from torch.optim.lr_scheduler import LambdaLR
 class NormWarmupScheduler(LambdaLR):
     """Scheduler with inverted warmup for norm targets."""
 
-    def __init__(self, scheduler, num_warmup_steps,
-                 warmup_start=10.0, warmup_end=1.0):
+    def __init__(
+        self,
+        scheduler,
+        num_warmup_steps,
+        warmup_start=10.0,
+        warmup_end=1.0,
+    ):
         self.wrapped_scheduler = scheduler
         self.num_warmup_steps = num_warmup_steps
         self.warmup_start = warmup_start

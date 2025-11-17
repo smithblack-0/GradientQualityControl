@@ -15,7 +15,7 @@ def create_mock_optimizer(num_params=3, param_shape=(10,)):
     """Create mock optimizer with real parameters."""
     params = [nn.Parameter(torch.randn(param_shape)) for _ in range(num_params)]
     mock_opt = Mock()
-    mock_opt.param_groups = [{'params': params}]
+    mock_opt.param_groups = [{"params": params}]
     mock_opt.step = Mock(return_value=None)
     mock_opt.zero_grad = Mock()
     return mock_opt, params
@@ -136,9 +136,7 @@ class TestControllerBehavior:
         """Steps when max_draws reached."""
         model = create_simple_model()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        wrapper = OptimizerWrapperGNS(
-            optimizer, noise_multiplier=0.0, max_batch_draws=3
-        )
+        wrapper = OptimizerWrapperGNS(optimizer, noise_multiplier=0.0, max_batch_draws=3)
 
         # noise_multiplier=0 means criterion never met, but max_draws forces step
         result = None
@@ -155,9 +153,7 @@ class TestControllerBehavior:
         """Returns False when still accumulating."""
         model = create_simple_model()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        wrapper = OptimizerWrapperGNS(
-            optimizer, noise_multiplier=0.0, max_batch_draws=10
-        )
+        wrapper = OptimizerWrapperGNS(optimizer, noise_multiplier=0.0, max_batch_draws=10)
 
         optimizer.zero_grad()
         x = torch.randn(1, 10)

@@ -1,6 +1,7 @@
 """
 Gradient Noise Scale controller for adaptive gradient accumulation.
 """
+
 import torch
 from torch import nn
 from .base import AbstractOptimizerWrapper
@@ -37,7 +38,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         self,
         optimizer: torch.optim.Optimizer,
         noise_multiplier: float = 1.0,
-        max_batch_draws: int = 64
+        max_batch_draws: int = 64,
     ):
         super().__init__(optimizer)
 
@@ -78,7 +79,10 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
 
         return torch.stack(norms).norm().item()
 
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on GNS criterion.
 
@@ -112,7 +116,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
 
         # Check if we should step (computes and caches GNS)
         force_step = self.num_draws >= self.max_draws
-        gns_criterion_met = self._cached_gns <= self.num_draws*self.noise_multiplier
+        gns_criterion_met = self._cached_gns <= self.num_draws * self.noise_multiplier
         will_step_optimizer = gns_criterion_met or force_step
 
         # Step the optimizer itself
@@ -138,10 +142,10 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         # Compute statistics
         norms_array = np.array(gradient_norms)
         variance = np.var(norms_array)
-        mean_squared = np.mean(norms_array ** 2)
+        mean_squared = np.mean(norms_array**2)
 
         # Compute and return estimated gns
-        estimated_gns = variance/(mean_squared + 1e-8)
+        estimated_gns = variance / (mean_squared + 1e-8)
         return estimated_gns
 
     def statistics(self) -> Dict[str, Any]:
@@ -153,8 +157,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
 
     def zero_grad(self):
         raise NotImplementedError(
-            "GNScale automatically clears gradients in step(). "
-            "Do not call zero_grad() manually."
+            "GNScale automatically clears gradients in step(). " "Do not call zero_grad() manually."
         )
 
     def __repr__(self):
