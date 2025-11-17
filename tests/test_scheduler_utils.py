@@ -1,6 +1,7 @@
 """
 Tests for NormWarmupScheduler.
 """
+
 import unittest
 import torch
 import torch.nn as nn
@@ -17,14 +18,13 @@ class TestNormWarmupScheduler(unittest.TestCase):
         base_scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
 
         warmup = NormWarmupScheduler(
-            base_scheduler, num_warmup_steps=4,
-            warmup_start=10.0, warmup_end=2.0
+            base_scheduler, num_warmup_steps=4, warmup_start=10.0, warmup_end=2.0
         )
 
         values = []
         for _ in range(4):
             warmup.step()
-            values.append(optimizer.param_groups[0]['lr'])
+            values.append(optimizer.param_groups[0]["lr"])
 
         # Should decay from high to low
         self.assertGreater(values[0], values[-1])
@@ -35,8 +35,7 @@ class TestNormWarmupScheduler(unittest.TestCase):
         base_scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=0.0)
 
         warmup = NormWarmupScheduler(
-            base_scheduler, num_warmup_steps=2,
-            warmup_start=10.0, warmup_end=1.0
+            base_scheduler, num_warmup_steps=2, warmup_start=10.0, warmup_end=1.0
         )
 
         warmup.step()
@@ -45,7 +44,7 @@ class TestNormWarmupScheduler(unittest.TestCase):
         post_warmup_values = []
         for _ in range(5):
             warmup.step()
-            post_warmup_values.append(optimizer.param_groups[0]['lr'])
+            post_warmup_values.append(optimizer.param_groups[0]["lr"])
 
         self.assertLess(post_warmup_values[-1], post_warmup_values[0])
         self.assertLess(post_warmup_values[-1], 1.0)
@@ -56,8 +55,7 @@ class TestNormWarmupScheduler(unittest.TestCase):
         base_scheduler = StepLR(optimizer, step_size=1, gamma=0.5)
 
         warmup = NormWarmupScheduler(
-            base_scheduler, num_warmup_steps=3,
-            warmup_start=10.0, warmup_end=1.0
+            base_scheduler, num_warmup_steps=3, warmup_start=10.0, warmup_end=1.0
         )
 
         initial_epoch = base_scheduler.last_epoch
@@ -76,5 +74,5 @@ class TestNormWarmupScheduler(unittest.TestCase):
         self.assertIsInstance(warmup, LRScheduler)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

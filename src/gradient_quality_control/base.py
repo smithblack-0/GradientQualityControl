@@ -31,19 +31,18 @@ class AbstractOptimizerWrapper(Optimizer):
     def __init__(self, optimizer: Optimizer):
         self.optimizer = optimizer
         self.last_optimizer_result = None
-        self.num_batches = 1 # One batch if we can even invoke the optimizer
+        self.num_batches = 1  # One batch if we can even invoke the optimizer
         self.num_steps = 0
-        self.num_draws = 1 # One draw because we had to take one batch.
+        self.num_draws = 1  # One draw because we had to take one batch.
 
         self.parameters = []
         for group in self.optimizer.param_groups:
-            for p in group['params']:
+            for p in group["params"]:
                 self.parameters.append(p)
-
 
     def _take_batch_step(self):
         self.num_batches += 1
-        self.num_draws +=1
+        self.num_draws += 1
 
     def _take_optimizer_step(self, closure: Optional[Callable[[], Any]] = None):
         """Takes an optimizer step, caching the return"""
@@ -64,11 +63,13 @@ class AbstractOptimizerWrapper(Optimizer):
         self.num_steps += 1
         self.num_draws = 0
 
-    def _get_base_statistics(self)->Dict[str, Any]:
+    def _get_base_statistics(self) -> Dict[str, Any]:
         """gets the basic statistics dictionary"""
-        return {"batches" : self.num_batches,
-                "steps" : self.num_steps,
-                "num_draws" : self.num_draws,}
+        return {
+            "batches": self.num_batches,
+            "steps": self.num_steps,
+            "num_draws": self.num_draws,
+        }
 
     def __getattr__(self, name: str):
         """Route everything not explicitly set  to the underlying optimizer."""

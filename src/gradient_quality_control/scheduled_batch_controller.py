@@ -1,6 +1,7 @@
 """
 Scheduled Batch Controller for fixed gradient accumulation based on a schedule.
 """
+
 import torch
 from .base import AbstractOptimizerWrapper
 from typing import Dict, Any, Optional, Callable
@@ -32,11 +33,11 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
     """
 
     def __init__(
-            self,
-            optimizer: torch.optim.Optimizer,
-            physical_batch_size: int,
-            initial_logical_batch_size: Optional[int] = None,
-            max_batch_draws: int = 64
+        self,
+        optimizer: torch.optim.Optimizer,
+        physical_batch_size: int,
+        initial_logical_batch_size: Optional[int] = None,
+        max_batch_draws: int = 64,
     ):
         super().__init__(optimizer)
 
@@ -55,7 +56,7 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
     @property
     def target_logical_batch_size(self) -> float:
         """Target logical batch size from scheduler."""
-        return self.param_groups[0]['lr']
+        return self.param_groups[0]["lr"]
 
     @property
     def target_draws(self) -> int:
@@ -63,7 +64,10 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         raw = self.target_logical_batch_size / self.physical_batch_size
         return max(1, round(raw))
 
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Accumulate batches until reaching target logical batch size.
 
@@ -79,10 +83,7 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
             True if the optimizer stepped, False if still accumulating.
         """
         # Check if we should step after this draw
-        will_step = (
-                self.num_draws >= self.target_draws or
-                self.num_draws >= self.max_draws
-        )
+        will_step = self.num_draws >= self.target_draws or self.num_draws >= self.max_draws
 
         if will_step:
             self._take_optimizer_step(closure)
