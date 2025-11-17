@@ -34,7 +34,9 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     """
 
     def __init__(
-        self, optimizer: torch.optim.Optimizer, mode: Literal["global", "independent"] = "global"
+        self,
+        optimizer: torch.optim.Optimizer,
+        mode: Literal["global", "independent"] = "global",
     ):
         super().__init__(optimizer)
 

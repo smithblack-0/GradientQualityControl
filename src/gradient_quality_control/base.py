@@ -28,7 +28,10 @@ class AbstractOptimizerWrapper(Optimizer):
          - num_draws: Number of optimizer draws within this step.
     """
 
-    def __init__(self, optimizer: Optimizer):
+    def __init__(
+        self,
+        optimizer: Optimizer,
+    ):
         self.optimizer = optimizer
         self.last_optimizer_result = None
         self.num_batches = 1  # One batch if we can even invoke the optimizer
@@ -44,7 +47,10 @@ class AbstractOptimizerWrapper(Optimizer):
         self.num_batches += 1
         self.num_draws += 1
 
-    def _take_optimizer_step(self, closure: Optional[Callable[[], Any]] = None):
+    def _take_optimizer_step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ):
         """Takes an optimizer step, caching the return"""
 
         # Catch issue
@@ -71,6 +77,9 @@ class AbstractOptimizerWrapper(Optimizer):
             "num_draws": self.num_draws,
         }
 
-    def __getattr__(self, name: str):
+    def __getattr__(
+        self,
+        name: str,
+    ):
         """Route everything not explicitly set  to the underlying optimizer."""
         return getattr(self.optimizer, name)

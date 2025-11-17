@@ -35,7 +35,11 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     def norm_threshold(self):
         return self.param_groups[0]["lr"]
 
-    def __init__(self, optimizer: torch.optim.Optimizer, max_batch_draws: int = 64):
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        max_batch_draws: int = 64,
+    ):
         """
         Initialize the GNTS wrapper.
 
@@ -60,7 +64,10 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 
         # Note: self.parameters is constructed in base class.
 
-    def step(self, closure: Optional[Callable[[], Any]] = None) -> bool:
+    def step(
+        self,
+        closure: Optional[Callable[[], Any]] = None,
+    ) -> bool:
         """
         Conditionally step the optimizer based on gradient quality.
 
