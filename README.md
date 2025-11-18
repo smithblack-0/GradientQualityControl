@@ -161,7 +161,7 @@ GQC-AS operates as a Sequential Binary Decision Controller: after each microbatc
 
 ## Why does this work?
 
-We don't know. It just does.
+We don't know. It just does. Those who want a more formal verison of that are encouraged to jump into [theory](documents/research/results_and_thoery.md), those who want a simple summary can just keep reading. 
 
 Generation 1 analysis revealed paradoxes:
 
