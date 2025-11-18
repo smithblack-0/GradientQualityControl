@@ -35,7 +35,7 @@ Getting started with GQC is straightforward. We discuss a quickstart guide here.
 First, install the library from PyPi
 
 ```text
-[Todo]
+pip install torch-gqc
 ```
 
 Now, suppose we have a classical learning loop, something like
@@ -159,18 +159,35 @@ Fine-tuning performance is unknown, but likely to be suboptimal without signific
 
 GQC-AS operates as a Sequential Binary Decision Controller: after each microbatch, the system decides whether gradient quality is sufficient to step, or whether to accumulate another batch.
 
-**Key findings** (scoped to 50M-800M parameters, ~280M tokens):
-- Models require ~1/3 the optimizer steps of standard training
-- Models consistently beat their controls, and appear to auto-tune the logical batch size.
-- Direct gradient magnitude control eliminates need for learning rate decay, and allows AdamW to train faster.
-- Gradient Noise Scale does not accurately predict optimal step timing, and this is conjectured to be due to adam interactions. Adam instead appears to prefer isostep operation where the gradients consistently have the same magnitude.
+## Why does this work?
 
-**Detailed analysis, ablations, and theoretical discussion:** 
+We don't know. It just does.
+
+Generation 1 analysis revealed paradoxes:
+
+- Control models show < 1° angle between Adam momentum and raw gradients on control cases (near-perfect alignment)
+- Yet accumulation can reduce gradient norms by a factor of 20, suggesting massive amounts of noise.
+- Generation 1 fitting produced data exponent β ≈ 0.35 (Kaplan tradition) WITHOUT hyperparameter tuning - normally this requires extensive search
+- The fit was unstable but suggestive of improved scaling behavior
+- Naive gaussian error theory with Adam Moments analysis suggests reducing noise but taking more steps should balance out; it clearly did not.
+
+The mathematics say with Adam more steps at higher noise is equivalent to less steps at higher lower noise. The empirics say removing the noise helps tremendously despite the signal already being present. We are much more confident than not that noise is being reduced than not and that is is helping and measurable, but paradoxically it is detectible by one means but not by another.
+
+One notable possible explanation is the reactive nature of most of the tests: Difficult batches usually cause more draws. This is the case with the GNS, GNTS, and MHT mode. We call this phenomenon **Anomaly Smoothing**. Given what has been observed, there is also a large likelyhood having gradients that are consistently the same magnitude is extremely beneficial as well. But if anomaly smoothing was the only effect, why did ensuring consistent gradient norm magnitudes in GNTS help too?
+
+Key unknowns:
+- What does accumulation actually do to gradient-momentum alignment? Where is the excess magnitude we are cancelling away living?
+- Is the anomaly smoothing the primary driver of the observed effects? The constant gradient magnitudes? The extra batches? Something else?
+- What explains the incongruency between angle measures and magnitude measures?- Is this an Adam-specific phenomenon or general to adaptive optimizers?
+- If we are removing noise, do approximate second order optimizers, such as Shampoo and K-FAC, do better with better curvature estimates?
+
+This is active research with incomplete theory. The results are too strong to ignore, but we cannot yet explain why they occur.
+
+## More details
+
 
 See [implementations](documentation/research/research_implementations.md) for a summary of what has been tested.
 See [theory](documents/research/results_and_thoery.md) for a discusson of what the emperical results have uncovered, and what implications it may have for optimizer theory, model design, and more.
-
-**Collaboration and Replication**
 
 See the experiments folder at [experiments](examples) to view the research colabs used in the studies, replicate the results yourself, and draw your own conclusion. The "Budget" series of experiments can be reproduced in under 150$. Please credit this repository and the discussion inside, and switch to the formal paper when it comes out, when extending the results.
 
