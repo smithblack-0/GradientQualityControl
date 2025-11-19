@@ -14,9 +14,9 @@ Notable outcomes so far showing some strengths and limitations include:
 | 50m model tried at various batch sizes | logical batch size largely the same |
 | 50m test model on multiepoch task      | converged to a worse floor          |
 
-No fine tuning has been tested yet. This tends to have much higher sample efficiency, but also may be sensitive to regularization.
+No fine tuning has been tested yet. This tends to have much higher sample efficiency, but also may be sensitive to regularization. A notable limitation is that we may be improving small and midscale model behavior to match large model behavior, rather than improving scaling laws as a whole.
 
-## Intuition/Explain it like I am 6.
+## Explain it like I am 5.
 
 We have been feeding our models with gasoline (gradients) that is 98% water and kludged together enough weird tricks our models to tolerate that. 
 

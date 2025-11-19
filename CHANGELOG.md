@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3
+
+- The cleaners now cache the mean last grad norm before clearing the grads, making it much easier for users to identify what they were. See mean_last_grad_norms.
+- Minor documentaiton changes. 
+
 ## 0.7.2 
 
 Continous deployment YAML pushes. System should now publish when a pull request is accepted with the release tag.

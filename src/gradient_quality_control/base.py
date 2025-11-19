@@ -8,6 +8,7 @@ of statistics.
 
 from typing import Any, Callable, Dict, Optional
 
+import torch
 from torch.optim import Optimizer
 
 
@@ -23,9 +24,12 @@ class AbstractOptimizerWrapper(Optimizer):
 
     Fields:
          - last optimizer result: cached result of last optimizer call
+         - mean_last_grad_norm: mean last gradient norms from the last time
+            the optimizer took a step. L2 norm.
          - num_batches: total number of batches processed
          - num_steps: total number of optimizer steps taken
          - num_draws: Number of optimizer draws within this step.
+
     """
 
     def __init__(
@@ -37,6 +41,7 @@ class AbstractOptimizerWrapper(Optimizer):
         self.num_batches = 1  # One batch if we can even invoke the optimizer
         self.num_steps = 0
         self.num_draws = 1  # One draw because we had to take one batch.
+        self.last_grad_norm = None
 
         self.parameters = []
         for group in self.optimizer.param_groups:
@@ -58,12 +63,15 @@ class AbstractOptimizerWrapper(Optimizer):
             raise RuntimeError("Forgot to invoke take batch step after take optimizer step")
 
         # Convert gradients to mean form
+        grads = []
         for param in self.parameters:
             if param.grad is None:
                 continue
             param.grad.data /= self.num_draws
+            grads.append(param.grad)
 
         # Take step.
+        self.last_grad_norm = torch.nn.utils.get_total_norm(grads)
         self.last_optimizer_result = self.optimizer.step(closure)
         self.optimizer.zero_grad()
         self.num_steps += 1
