@@ -1,4 +1,4 @@
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 from .base import AbstractOptimizerWrapper
 from .gradient_noise_scale import OptimizerWrapperGNS
@@ -6,7 +6,11 @@ from .gradient_norm_rescalar import OptimizerWrapperGNR
 from .gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
 from .metric_hypothesis_test import OptimizerWrapperMHT
 from .scheduled_batch_controller import OptimizerWrapperSBC
-from .scheduling_utils import NormWarmupScheduler
+from .scheduling_utils import (
+    get_direct_cosine_annealing_with_warmup,
+    get_norm_threshold_cosine_annealing_with_warmup,
+    get_quadratic_batch_schedule,
+)
 
 __all__ = [
     "AbstractOptimizerWrapper",
@@ -14,9 +18,14 @@ __all__ = [
     "OptimizerWrapperGNR",
     "OptimizerWrapperMHT",
     "OptimizerWrapperSBC",
-    "NormWarmupScheduler",
     "OptimizerWrapperGNTS",
+    "get_quadratic_batch_schedule",
+    "get_direct_cosine_annealing_with_warmup",
+    "get_norm_threshold_cosine_annealing_with_warmup",
     "__version__",
 ]
 
-__version__ = version("torch-gqc")
+try:
+    __version__ = version("torch-gqc")
+except PackageNotFoundError:
+    pass

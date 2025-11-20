@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+Change made that breaks existing norm scheduling design, and as such we advance subversion. Still in beta, so this is okay, and is demonstratably superior from writing the examples.
+
+- New utils get_direct_cosine_annealing_with_warmup, get_norm_threshold_cosine_annealing_with_warmup, get_quadratic_batch_schedule designed to provide direct solutions for practitioners for the schedules needed
+- Usage is to provide necessary info and provide the wrapped optimizer, and it attaches and provides reasonable default schedules. 
+- Users can define their own custom lambda schedules if desired still.
+
+
 ## 0.7.3
 
 - The cleaners now cache the mean last grad norm before clearing the grads, making it much easier for users to identify what they were. See mean_last_grad_norms.
