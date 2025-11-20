@@ -29,7 +29,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
-        target_initial_norm_threshold: float = 1.0,
+        target_initial_norm: float = 1.0,
         mode: Literal["global", "independent"] = "global",
     ):
         """
@@ -37,7 +37,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         optimizer wrapper.
 
         :param optimizer: The optimizer to wrap
-        :param target_initial_norm_threshold: When torch schedules ask our schedule
+        :param target_initial_norm: When torch schedules ask our schedule
             rate to be 1.0, this is the threshold value that is actually set.
         :param mode:  {'global', 'independent'}, optional (default: 'global')
         Scaling strategy:
@@ -53,7 +53,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         self.mode = mode
 
         # Scheduler controls this (interprets as target norm)
-        self.param_groups = [{"lr": target_initial_norm_threshold}]
+        self.param_groups = [{"lr": target_initial_norm}]
 
         # Note: self.parameters is constructed in base class.
 
