@@ -29,7 +29,6 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
-        target_initial_norm: float = 1.0,
         mode: Literal["global", "independent"] = "global",
     ):
         """
@@ -37,8 +36,6 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         optimizer wrapper.
 
         :param optimizer: The optimizer to wrap
-        :param target_initial_norm: When torch schedules ask our schedule
-            rate to be 1.0, this is the threshold value that is actually set.
         :param mode:  {'global', 'independent'}, optional (default: 'global')
         Scaling strategy:
         - 'global': All gradients scaled by same factor to match target total norm

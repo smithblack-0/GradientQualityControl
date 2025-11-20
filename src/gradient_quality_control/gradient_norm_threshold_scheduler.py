@@ -40,7 +40,6 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
-        target_initial_norm: float = 1.0,
         max_batch_draws: int = 64,
     ):
         """
@@ -51,9 +50,6 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         optimizer : torch.optim.Optimizer
             The underlying optimizer that GNTS will manage. GNTS defers
             stepping this optimizer until its control condition is met.
-        target_initial_norm : float, optional
-            Initial target of the norm threshold. Default is 1.0. It is useful
-            to set this to your desired norm threshold after warmup is complete.
         max_batch_draws : int, optional (default: 64)
             The maximum number of consecutive batches GNTS will draw
             before forcing an optimizer step, regardless of the gradient
