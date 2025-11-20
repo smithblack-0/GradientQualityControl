@@ -1,7 +1,15 @@
-# Gradient Quality Control and Adaptive Sampling
+# Gradient Quality Control
 **Gradient Quality Control (GQC)** is a training paradigm that improves gradient quality by means other than datasource filtering before the gradients ever reach the optimizer. Most of our algorithms do this by drawing additional samples adaptively, rather than relying on post-facto optimizer denoising mechanisms that primarily slow down training. This tends to significantly improve pretrainiing speed.
 
-This library provides research-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. These wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. **They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.**
+This library provides production-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. The solution is a new kind of **component** lying orthogonal to standard optimizers that preconditions the gradients to a higher quality before the optimizers ever observe them. These **Gradient Cleaner** wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. **They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.**
+
+Full understanding of the phenomenon is currently at a 'research-grade' level, but appears likely to scale nicely and, at minimum, is extremely beneficial when training small-scale models.
+
+## What we replace and add
+
+We replace nothing. You still operate using your standard training loop. This is more akin to adding gradient clipping to transformers than replacing SGD with AdamW. Notably, as the underlying mechanism is just a special version of gradient accumulation, anything that can perform gradient accumulation is in theory compatible with these algorithms; note in practice version 1.0 will work with DDP and related, but minor adjustments to hyperparameter thresholds according to provided formulas are needed to compensate for measuring vital statistics only on a single device before gradient merger. As these formulas are provisional, they are not yet programmed into the controllers.
+
+The system is literally implemented as an optimzer-wrapper that takes over invoking zero_grad() and .step() from the user. On top of this we add a special controller that monitors gradient and model health signals in order to decide when to halt gradient accumulation to take a step. The primary controlled feature is to set the logical batch size to a multiple of the physical batch size by this mechanism. The control signal is directly reactive, responding to issues during training. Practioners may wish to jump down to "For Practitioners" to see how minimal the modifications are.
 
 # Notable outcomes
 

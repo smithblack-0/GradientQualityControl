@@ -83,6 +83,7 @@ class AbstractOptimizerWrapper(Optimizer):
             "batches": self.num_batches,
             "steps": self.num_steps,
             "num_draws": self.num_draws,
+            "last_mean_grad_norm": self.last_grad_norm,
         }
 
     def __getattr__(

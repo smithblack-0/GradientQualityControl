@@ -3,7 +3,8 @@
 ## 0.7.3
 
 - The cleaners now cache the mean last grad norm before clearing the grads, making it much easier for users to identify what they were. See mean_last_grad_norms.
-- Minor documentaiton changes. 
+- Readme clarifies this is a component and the scope more quickly
+- The cleaners now return "last_grad_norm" from statistics, indicating the mean last grad norm.
 
 ## 0.7.2 
 
