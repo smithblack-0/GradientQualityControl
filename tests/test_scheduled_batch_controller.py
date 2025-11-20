@@ -2,9 +2,9 @@
 Tests for OptimizerWrapperSBC (Scheduled Batch Controller).
 """
 
-import unittest
 from unittest.mock import Mock
 
+import pytest
 import torch
 import torch.nn as nn
 
@@ -21,7 +21,7 @@ def create_mock_optimizer(num_params=3, param_shape=(10,)):
     return mock_opt, params
 
 
-class TestTargetDrawsCalculation(unittest.TestCase):
+class TestTargetDrawsCalculation:
     """Test target_draws property behavior."""
 
     def test_target_draws_rounds_to_nearest(self):
@@ -30,11 +30,11 @@ class TestTargetDrawsCalculation(unittest.TestCase):
 
         # 100 / 32 = 3.125 -> rounds to 3
         wrapper.param_groups[0]["lr"] = 100.0
-        self.assertEqual(wrapper.target_draws, 3)
+        assert wrapper.target_draws == 3
 
         # 120 / 32 = 3.75 -> rounds to 4
         wrapper.param_groups[0]["lr"] = 120.0
-        self.assertEqual(wrapper.target_draws, 4)
+        assert wrapper.target_draws == 4
 
     def test_target_draws_minimum_is_one(self):
         mock_opt, _ = create_mock_optimizer()
@@ -42,14 +42,14 @@ class TestTargetDrawsCalculation(unittest.TestCase):
 
         # 10 / 100 = 0.1 -> should be at least 1
         wrapper.param_groups[0]["lr"] = 10.0
-        self.assertEqual(wrapper.target_draws, 1)
+        assert wrapper.target_draws == 1
 
     def test_default_initial_batch_size(self):
         mock_opt, _ = create_mock_optimizer()
         wrapper = OptimizerWrapperSBC(mock_opt, physical_batch_size=64)
 
         # Default: logical = physical, so target_draws = 1
-        self.assertEqual(wrapper.target_draws, 1)
+        assert wrapper.target_draws == 1
 
     def test_custom_initial_batch_size(self):
         mock_opt, _ = create_mock_optimizer()
@@ -58,10 +58,10 @@ class TestTargetDrawsCalculation(unittest.TestCase):
         )
 
         # 128 / 32 = 4
-        self.assertEqual(wrapper.target_draws, 4)
+        assert wrapper.target_draws == 4
 
 
-class TestControllerBehavior(unittest.TestCase):
+class TestControllerBehavior:
     """Test stepping behavior based on scheduled batch size."""
 
     def test_steps_immediately_when_target_is_one(self):
@@ -74,7 +74,7 @@ class TestControllerBehavior(unittest.TestCase):
 
         result = wrapper.step()
 
-        self.assertTrue(result)
+        assert result is True
         mock_opt.step.assert_called_once()
 
     def test_accumulates_until_target_draws(self):
@@ -87,19 +87,19 @@ class TestControllerBehavior(unittest.TestCase):
         for p in params:
             p.grad = torch.randn_like(p)
         result1 = wrapper.step()
-        self.assertFalse(result1)
+        assert result1 is False
 
         # Second draw
         for p in params:
             p.grad = torch.randn_like(p)
         result2 = wrapper.step()
-        self.assertFalse(result2)
+        assert result2 is False
 
         # Third draw - should step
         for p in params:
             p.grad = torch.randn_like(p)
         result3 = wrapper.step()
-        self.assertTrue(result3)
+        assert result3 is True
         mock_opt.step.assert_called_once()
 
     def test_force_steps_at_max_draws(self):
@@ -117,10 +117,10 @@ class TestControllerBehavior(unittest.TestCase):
                 p.grad = torch.randn_like(p)
             result = wrapper.step()
             if i < 4:
-                self.assertFalse(result)
+                assert result is False
 
         # Fifth draw should force step
-        self.assertTrue(result)
+        assert result is True
         mock_opt.step.assert_called_once()
 
     def test_responds_to_scheduler_changes(self):
@@ -139,16 +139,16 @@ class TestControllerBehavior(unittest.TestCase):
         for p in params:
             p.grad = torch.randn_like(p)
         result1 = wrapper.step()
-        self.assertFalse(result1)
+        assert result1 is False
 
         # Second draw - should step
         for p in params:
             p.grad = torch.randn_like(p)
         result2 = wrapper.step()
-        self.assertTrue(result2)
+        assert result2 is True
 
 
-class TestStatistics(unittest.TestCase):
+class TestStatistics:
     """Test statistics contract."""
 
     def test_statistics_contains_required_keys(self):
@@ -156,19 +156,19 @@ class TestStatistics(unittest.TestCase):
         wrapper = OptimizerWrapperSBC(mock_opt, physical_batch_size=32)
         stats = wrapper.statistics()
 
-        self.assertIn("target_draws", stats)
-        self.assertIn("target_logical_batch_size", stats)
-        self.assertIn("physical_batch_size", stats)
-        self.assertIn("batches", stats)
-        self.assertIn("steps", stats)
-        self.assertIn("num_draws", stats)
+        assert "target_draws" in stats
+        assert "target_logical_batch_size" in stats
+        assert "physical_batch_size" in stats
+        assert "batches" in stats
+        assert "steps" in stats
+        assert "num_draws" in stats
 
     def test_physical_batch_size_in_statistics(self):
         mock_opt, _ = create_mock_optimizer()
         wrapper = OptimizerWrapperSBC(mock_opt, physical_batch_size=128)
         stats = wrapper.statistics()
 
-        self.assertEqual(stats["physical_batch_size"], 128)
+        assert stats["physical_batch_size"] == 128
 
     def test_target_values_update_with_scheduler(self):
         mock_opt, _ = create_mock_optimizer()
@@ -177,9 +177,9 @@ class TestStatistics(unittest.TestCase):
         wrapper.param_groups[0]["lr"] = 256.0  # 256/32 = 8 draws
         stats = wrapper.statistics()
 
-        self.assertEqual(stats["target_logical_batch_size"], 256.0)
-        self.assertEqual(stats["target_draws"], 8)
+        assert stats["target_logical_batch_size"] == 256.0
+        assert stats["target_draws"] == 8
 
 
 if __name__ == "__main__":
-    unittest.main()
+    pytest.main([__file__])
