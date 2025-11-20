@@ -1,11 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+Change made that breaks existing norm scheduling design, and as such we advance subversion. Still in beta, so this is okay, and is demonstratably superior from writing the examples.
+
+- New utils get_direct_cosine_annealing_with_warmup, get_norm_threshold_cosine_annealing_with_warmup, get_quadratic_batch_schedule designed to provide direct solutions for practitioners for the schedules needed
+- Usage is to provide necessary info and provide the wrapped optimizer, and it attaches and provides reasonable default schedules. 
+- Users can define their own custom lambda schedules if desired still.
+
+
 ## 0.7.3
 
 - The cleaners now cache the mean last grad norm before clearing the grads, making it much easier for users to identify what they were. See mean_last_grad_norms.
 - Readme clarifies this is a component and the scope more quickly
 - The cleaners now return "last_grad_norm" from statistics, indicating the mean last grad norm.
-- Added 'target_initial_norm_threshold' argument to the GNTS and GNS controller types. This should not affect existign code, but lets one easily define what a torch controller means when they say 'choose a schedule value of 1.0'
 
 ## 0.7.2 
 

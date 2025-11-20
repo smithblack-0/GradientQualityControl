@@ -38,7 +38,7 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         self,
         optimizer: torch.optim.Optimizer,
         physical_batch_size: int,
-        initial_logical_batch_size: Optional[int] = None,
+        initial_logical_batch_size: Optional[float] = None,
         max_batch_draws: int = 64,
     ):
         super().__init__(optimizer)

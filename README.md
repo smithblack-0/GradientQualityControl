@@ -67,7 +67,7 @@ for inputs, labels in train_loader:
 In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications.
 
 ```python
-from gradient_quality_control import OptimizerWrapperGNTS, NormWarmupScheduler
+from gradient_quality_control import OptimizerWrapperGNTS, get_norm_threshold_cosine_annealing_with_warmup
 
 ...
 
@@ -79,8 +79,12 @@ lr_scheduler = get_constant_schedule_with_warmup (optimizer, warmup_steps=500, .
 # warmups as norms targets should actually start much higher than needed,
 # not at zero as built-in solutions request.
 optimizer = OptimizerWrapperGNTS(optimizer)
-norm_scheduler = get_cosine_annealing_schedule(optimizer, warmup_steps=500, ...)
-norm_scheduler = NormWarmupScheduler(norm_scheduler, warmup_steps= 500)
+norm_scheduler = get_norm_threshold_cosine_annealing_with_warmup(optimizer,
+                                                                num_warmup_steps = 500,
+                                                                 num_training_steps = ...,
+                                                                 start_norm = 0.8,
+                                                                 end_norm = 0.2, # Where the schedule ends at
+                                                                 )
 
 for inputs, labels in train_loader:
     
@@ -107,12 +111,14 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 lr_scheduler = get_warmup_scheduler(optimizer, warmup_steps=500, ...)
 
 # Optimizer wrapper intercepts schedule and automatically steps 
-# when quality is high enough. Note we need to replace the built-in
-# warmups as norms targets should actually start much higher than needed,
-# not at zero as built-in solutions request.
+# when quality is high enough. In this configuration, we are using
+# the start->end defaults of 1.0 -> 0.0. They are not perfect, but
+# work well for small and medium models. 
 optimizer = OptimizerWrapperGNTS(optimizer)
-norm_scheduler = get_cosine_annealing_schedule(optimizer, warmup_steps=500, ...)
-norm_scheduler = NormWarmupScheduler(norm_scheduler, warmup_steps= 500)    
+norm_scheduler = get_norm_threshold_cosine_annealing_with_warmup(optimizer,
+                                                                 num_warmup_steps = 500,
+                                                                 num_training_steps = ...,
+                                                                 )
 
 # Track optimizer step events
 step_batches = []
