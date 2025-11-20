@@ -19,4 +19,7 @@ __all__ = [
     "__version__",
 ]
 
-__version__ = version("torch-gqc")
+try:
+    __version__ = version("torch-gqc")
+except Exception:
+    __version__ = "dev-do-not-deploy"

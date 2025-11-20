@@ -5,6 +5,7 @@
 - The cleaners now cache the mean last grad norm before clearing the grads, making it much easier for users to identify what they were. See mean_last_grad_norms.
 - Readme clarifies this is a component and the scope more quickly
 - The cleaners now return "last_grad_norm" from statistics, indicating the mean last grad norm.
+- Added 'target_initial_norm_threshold' argument to the GNTS and GNS controller types. This should not affect existign code, but lets one easily define what a torch controller means when they say 'choose a schedule value of 1.0'
 
 ## 0.7.2 
 

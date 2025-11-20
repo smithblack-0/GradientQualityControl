@@ -24,22 +24,27 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
 
     The target norm is controlled via the scheduler system, which modifies
     the 'lr' field in param_groups (interpreted as target norm, not learning rate).
-
-    Parameters
-    ----------
-    optimizer : torch.optim.Optimizer
-        The underlying optimizer to wrap
-    mode : {'global', 'independent'}, optional (default: 'global')
-        Scaling strategy:
-        - 'global': All gradients scaled by same factor to match target total norm
-        - 'independent': Each parameter gradient scaled to target norm separately
     """
 
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
+        target_initial_norm_threshold: float = 1.0,
         mode: Literal["global", "independent"] = "global",
     ):
+        """
+        Initialization of the Gradient Norm Rescaler
+        optimizer wrapper.
+
+        :param optimizer: The optimizer to wrap
+        :param target_initial_norm_threshold: When torch schedules ask our schedule
+            rate to be 1.0, this is the threshold value that is actually set.
+        :param mode:  {'global', 'independent'}, optional (default: 'global')
+        Scaling strategy:
+        - 'global': All gradients scaled by same factor to match target total norm
+        - 'independent': Each parameter gradient scaled to target norm separately
+
+        """
         super().__init__(optimizer)
 
         if mode not in ("global", "independent"):
@@ -48,7 +53,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         self.mode = mode
 
         # Scheduler controls this (interprets as target norm)
-        self.param_groups = [{"lr": 1.0}]
+        self.param_groups = [{"lr": target_initial_norm_threshold}]
 
         # Note: self.parameters is constructed in base class.
 
