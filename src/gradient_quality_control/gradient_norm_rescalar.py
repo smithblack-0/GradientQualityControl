@@ -50,7 +50,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         self.mode = mode
 
         # Scheduler controls this (interprets as target norm)
-        self.param_groups = [{"lr": target_initial_norm}]
+        self.param_groups = [{"lr": 1.0}]
 
         # Note: self.parameters is constructed in base class.
 
