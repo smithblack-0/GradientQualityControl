@@ -50,7 +50,7 @@ Now, suppose we have a classical learning loop, something like
 
 ```python
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-scheduler = get_cosine_annealing_schedule(optimizer, warmup_steps=500, ...)
+scheduler = get_cosine_annealing_schedule(optimizer, num_warmup_steps=500, ...)
 for inputs, labels in train_loader:
     
     # Loss
@@ -67,7 +67,7 @@ for inputs, labels in train_loader:
 In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications.
 
 ```python
-from gradient_quality_control import OptimizerWrapperGNTS, NormWarmupScheduler
+from gradient_quality_control import OptimizerWrapperGNTS, NormWarmupAutoScheduler
 
 ...
 
@@ -77,10 +77,14 @@ lr_scheduler = get_constant_schedule_with_warmup (optimizer, warmup_steps=500, .
 # Optimizer wrapper intercepts schedule and automatically steps 
 # when quality is high enough. Note we need to replace the built-in
 # warmups as norms targets should actually start much higher than needed,
-# not at zero as built-in solutions request.
-optimizer = OptimizerWrapperGNTS(optimizer)
-norm_scheduler = get_cosine_annealing_schedule(optimizer, warmup_steps=500, ...)
-norm_scheduler = NormWarmupScheduler(norm_scheduler, warmup_steps= 500)
+# not at zero as built-in solutions request.  Target initial norm 
+# with cosine schedules represents the peak value when cosine annealing
+# starts. 
+optimizer = OptimizerWrapperGNTS(optimizer,
+                                 target_initial_norm = 0.8 # Peak schedule threshold of 0.8
+                                 )
+norm_scheduler = get_cosine_annealing_schedule(optimizer, num_warmup_steps=500, ...)
+norm_scheduler = NormWarmupAutoScheduler(norm_scheduler, num_warmup_steps= 500)
 
 for inputs, labels in train_loader:
     
@@ -110,9 +114,11 @@ lr_scheduler = get_warmup_scheduler(optimizer, warmup_steps=500, ...)
 # when quality is high enough. Note we need to replace the built-in
 # warmups as norms targets should actually start much higher than needed,
 # not at zero as built-in solutions request.
-optimizer = OptimizerWrapperGNTS(optimizer)
-norm_scheduler = get_cosine_annealing_schedule(optimizer, warmup_steps=500, ...)
-norm_scheduler = NormWarmupScheduler(norm_scheduler, warmup_steps= 500)    
+optimizer = OptimizerWrapperGNTS(optimizer,
+                                                                                                target_initial_norm = 0.8 # Peak schedule threshold of 0.8
+                                 )
+norm_scheduler = get_cosine_annealing_schedule(optimizer, num_warmup_steps=500, ...)
+norm_scheduler = NormWarmupAutoScheduler(norm_scheduler, num_warmup_steps= 500)    
 
 # Track optimizer step events
 step_batches = []

@@ -6,7 +6,7 @@ from .gradient_norm_rescalar import OptimizerWrapperGNR
 from .gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
 from .metric_hypothesis_test import OptimizerWrapperMHT
 from .scheduled_batch_controller import OptimizerWrapperSBC
-from .scheduling_utils import NormWarmupScheduler
+from .scheduling_utils import NormWarmupAutoScheduler, NormWarmupScheduler
 
 __all__ = [
     "AbstractOptimizerWrapper",
@@ -14,8 +14,9 @@ __all__ = [
     "OptimizerWrapperGNR",
     "OptimizerWrapperMHT",
     "OptimizerWrapperSBC",
-    "NormWarmupScheduler",
     "OptimizerWrapperGNTS",
+    "NormWarmupScheduler",
+    "NormWarmupAutoScheduler",
     "__version__",
 ]
 

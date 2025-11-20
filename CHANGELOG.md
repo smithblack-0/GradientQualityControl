@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.4
+
+- Added the NormWarmupAutoScheduler object and associated tests, which is considerably more intuitive to use as it automatically calibrates to the warmup target. Updated readme and various other documents to match.
+
 ## 0.7.3
 
 - The cleaners now cache the mean last grad norm before clearing the grads, making it much easier for users to identify what they were. See mean_last_grad_norms.
