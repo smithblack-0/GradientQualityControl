@@ -1,17 +1,34 @@
 # Gradient Quality Control
-**Gradient Quality Control (GQC)** is a training paradigm that improves gradient quality by means other than datasource filtering before the gradients ever reach the optimizer. Most of our algorithms do this by drawing additional samples adaptively, rather than relying on post-facto optimizer denoising mechanisms that primarily slow down training. This tends to significantly improve pretrainiing speed.
+
+**Gradient Quality Control (GQC)** is a training paradigm that improves gradient quality by means other than datasource filtering before the gradients ever reach the optimizer. Most of our algorithms do this by drawing additional samples adaptively, rather than relying on post-facto optimizer denoising mechanisms that primarily slow down training. This tends to significantly improve pretraining speed.
 
 This library provides production-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. The solution is a new kind of **component** lying orthogonal to standard optimizers that preconditions the gradients to a higher quality before the optimizers ever observe them. These **Gradient Cleaner** wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. **They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.**
 
 Full understanding of the phenomenon is currently at a 'research-grade' level, but appears likely to scale nicely and, at minimum, is extremely beneficial when training small-scale models.
 
-## What we replace and add
+## What do I do do use this?
 
-We replace nothing. You still operate using your standard training loop. This is more akin to adding gradient clipping to transformers than replacing SGD with AdamW. Notably, as the underlying mechanism is just a special version of gradient accumulation, anything that can perform gradient accumulation is in theory compatible with these algorithms; note in practice version 1.0 will work with DDP and related, but minor adjustments to hyperparameter thresholds according to provided formulas are needed to compensate for measuring vital statistics only on a single device before gradient merger. As these formulas are provisional, they are not yet programmed into the controllers.
+This library requires proficiency in adding and lightly modifying torch training loops to use.
 
-The system is literally implemented as an optimzer-wrapper that takes over invoking zero_grad() and .step() from the user. On top of this we add a special controller that monitors gradient and model health signals in order to decide when to halt gradient accumulation to take a step. The primary controlled feature is to set the logical batch size to a multiple of the physical batch size by this mechanism. The control signal is directly reactive, responding to issues during training. Practioners may wish to jump down to "For Practitioners" to see how minimal the modifications are.
+You replace nothing. You still operate using your standard training loop, and add a component. Using the library is more akin to adding gradient clipping to a transformer without it than swapping a component such as replacing SGD with AdamW. Notably, as the underlying mechanism is just a special version of gradient accumulation, anything that can perform gradient accumulation is in theory compatible with these algorithms.
 
-# Notable outcomes
+The system is literally implemented as an optimizer-wrapper that takes over invoking zero_grad() and .step() from the user. The module then decides when to take a step, performing gradient accumulation and increasing gradient quality proportionally. Some Cleaners apply other tricks as well, but they all act as optimizer wrappers to improve gradient quality before the gradients hit the optimizers themselves.
+
+## I wandered off the internet when I heard about this. Can you provide some intuition?
+
+First, understand this is just our best guess right now. We are still trying to understand the underlying mechanism. But this is what we think is happening.
+
+We have been feeding our models with gasoline (gradients) that is 98% water and kludged together enough weird tricks our models to tolerate that. 
+
+If we instead boil away the water in the first place, the engines (models) run faster. Even better we can probably make higher-precision engines that could not run on water-gasoline in the first place. Boiling away the water takes energy (compute), but we run so much faster it is worth it.
+
+Sometimes the water becomes steam, actually adding power, but the effect varies depending on the rpm the engine is at  (stage of pretraining). So we need to change the ratio as training continues (gradient norm magnitude scheduling).
+
+ Analogy is not guaranteed to work for all theory aspects. We will attempt to update this analogy as more information is uncovered.
+
+##  Notable outcomes
+
+Claimed results are preliminary and small-scale, and should be interpreted as suggestive rather than definitive. However, the success of the effect across multiple controller variations should be interpreted as 'highly suggestive' and extends many scaling priors. Work to provide full experimental harnesses for all axes at a **production** level is ongoing. Feel free to get involved!
 
 Notable outcomes so far showing some strengths and limitations include:
 
@@ -22,17 +39,14 @@ Notable outcomes so far showing some strengths and limitations include:
 | 50m model tried at various batch sizes | logical batch size largely the same |
 | 50m test model on multiepoch task      | converged to a worse floor          |
 
-No fine tuning has been tested yet. This tends to have much higher sample efficiency, but also may be sensitive to regularization. A notable limitation is that we may be improving small and midscale model behavior to match large model behavior, rather than improving scaling laws as a whole.
 
-## Explain it like I am 5.
+Stated for lay audiences: The same model ends up much better, and the results are significant enough to beat a model 16x larger.
 
-We have been feeding our models with gasoline (gradients) that is 98% water and kludged together enough weird tricks our models to tolerate that. 
+There are limitations.
 
-If we instead boil away the water in the first place, the engines (models) run faster. Even better we can probably make higher-precision engines that could not run on water-gasoline in the first place. Boiling away the water takes energy (compute), but we run so much faster it is worth it.
-
-Sometimes the water becomes steam, actually adding power, but the effect varies depending on the rpm the engine is at  (stage of pretraining). So we need to change the ratio as training continues (norm magnitude scheduling)
-
-Theorists and angry people on the internet are encouraged to jump down into the "for researchers" section. The above noise to signal numbers were empirically measured using a reproducible procedure, though at small scale only, so actual numbers may vary for your application. Analogy is not guaranteed to work for all theory aspects.
+* No fine tuning has been tested yet.
+* We may be improving small and midscale model behavior to match large model behavior; it is unknown whether this scales.
+* Some of these results were found using the old, less effective controller, but as part of the same research push.
 
 # For Practitioners
 
@@ -150,26 +164,22 @@ for inputs, labels in pbar:
     pbar.set_postfix(stats)
 ```
 
-Note that attaching the schedule to the OptimizerWrapperGNTS instead made it set the target gradient norm threshold; under the hood, we draw microbatches until noise cancels out sufficiently to meet that threshold. A cosine annealing from 1.0 to 0.2 is not atypical. This replaces the learning rate schedule by directly conditioning the gradients used to decide the step size instead.
+Note that attaching the schedule to the OptimizerWrapperGNTS instead made it set the target gradient norm threshold; under the hood, we draw microbatches until noise cancels out sufficiently to meet that threshold. A cosine annealing from 1.0 to 0.2 is not atypical. This replaces the learning rate schedule by directly conditioning the gradients used to decide the step size instead. **The threshold is an upper bound on the gradient norm, not a lower bound**.
 
 **Important: Norm scheduler warmup should be inverted from LR warmup**
 - LR warmup: start low (0.0) → ramp up to peak
 - Norm warmup: start high (example 5.0) → ramp down to target (1.0)
 
-## Going deeper
+## Distributed Compatibility.
 
-Consult [Usage](documentation/usage.md) for information on using the various classes, the options available, and the intended usage paradigm. 
-
-The underlying principle of operation is you gradient accumulate over multiple steps, until the gradient norms are below a threshold. This is guaranteed to happen as a mean of noisy vectors shrinks in magnitude.
-
-The threshold is then scheduled to ensure that in early traing we accept a lot of noise, but by late training we accept little.
-
+Largely, since these operate by gradient accumulation, distributed capacity should 'just work'. 1.0 will work with DDP and related, but minor adjustments to hyperparameter thresholds according to provided formulas are likely needed. Advanced users should consult [Usage](documentation/usage.md) for the necessary formulas.
 
 ## Limitations
 
-Fine-tuning performance is unknown, but likely to be suboptimal without significant retuning of regularization. This system does not function correctly over multiple epochs when batches are not, in fact, independent and may be converging to a worse floor. Scaling behavior appears promising but has not been tested above 800m parameters. We conjecture that the norm schedule should be reduced in as you would clipping rules, but cannot prove it right now.
+Fine-tuning performance is unknown, but likely to be suboptimal without significant retuning of regularization. Scaling behavior appears promising but has not been tested above 800m parameters. We conjecture that the norm schedule should be reduced in as you would clipping rules, but cannot prove it right now.
 
 # For Researchers
+**Those interested only in how to use this library should stop reading here**
 
 GQC-AS operates as a Sequential Binary Decision Controller: after each microbatch, the system decides whether gradient quality is sufficient to step, or whether to accumulate another batch.
 

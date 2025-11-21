@@ -9,7 +9,7 @@ def get_direct_cosine_annealing_with_warmup(
     num_warmup_steps: int,
     num_training_steps: int,
     min_value: float = 0.0,
-):
+) -> LambdaLR:
     """
     Create a scheduler with linear warmup and cosine annealing.
     Importantly, this DIRECTLY sets the value of the learning
@@ -50,7 +50,7 @@ def get_norm_threshold_cosine_annealing_with_warmup(
     start_norm: float = 1.0,
     end_norm: float = 0.0,
     warmup_multiplier: float = 10.0,
-):
+) -> LambdaLR:
     """
     Create a norm threshold scheduler with inverted warmup and cosine annealing.
     The norm threshold version has the questionable distinction that it's warmup
@@ -91,8 +91,11 @@ def get_norm_threshold_cosine_annealing_with_warmup(
 
 
 def get_quadratic_batch_schedule(
-    optimizer, initial_batch_size: int, final_batch_size: int, num_training_steps: int
-):
+    optimizer,
+    initial_batch_size: int,
+    final_batch_size: int,
+    num_training_steps: int,
+) -> LambdaLR:
     """
     Batch size scheduler with quadratic growth from initial to final.
 
@@ -113,5 +116,39 @@ def get_quadratic_batch_schedule(
         progress = step / num_training_steps
         # Quadratic growth: slow early, fast late
         return initial_batch_size + (final_batch_size - initial_batch_size) * (progress**2)
+
+    return LambdaLR(optimizer, lr_lambda)
+
+
+def get_curved_batch_schedule(
+    optimizer,
+    initial_batch_size: int,
+    final_batch_size: int,
+    num_training_steps: int,
+    polynomial_exponent: float = 2.0,
+) -> LambdaLR:
+    """
+    Batch size scheduler with arbitrary polynomial growth or decay from initial to final.
+
+    Args:
+        optimizer: Optimizer (wrapper) to schedule
+        initial_batch_size: Starting batch size
+        final_batch_size: Ending batch size
+        num_training_steps: Total training steps
+        polynomial_exponent:
+            Literally what controls progress^polynomial_exponent.
+            High valus have slow initial change followed shortly by
+            more rapid change, low values are the opposite.
+    Returns:
+        LambdaLR scheduler for batch size values
+    """
+    assert polynomial_exponent > 0
+
+    def lr_lambda(step):
+        progress = step / num_training_steps
+        # Quadratic growth: slow early, fast late
+        return initial_batch_size + (final_batch_size - initial_batch_size) * (
+            progress**polynomial_exponent
+        )
 
     return LambdaLR(optimizer, lr_lambda)

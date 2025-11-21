@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Addition of the get_batch_curved_schedule scheduler utility function for general batch seek performance, rather than restriction to only the quadratic curve. No api violations. 
+- Minor formatting and typing issues fixed. 
+- Moderate changes and streamlining of the readme.
+
 ## 0.8.0
 
 Change made that breaks existing norm scheduling design, and as such we advance subversion. Still in beta, so this is okay, and is demonstratably superior from writing the examples.

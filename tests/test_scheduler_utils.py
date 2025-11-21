@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.optim.lr_scheduler import LRScheduler
 
 from src.gradient_quality_control.scheduling_utils import (
+    get_curved_batch_schedule,
     get_direct_cosine_annealing_with_warmup,
     get_norm_threshold_cosine_annealing_with_warmup,
     get_quadratic_batch_schedule,
@@ -236,6 +237,176 @@ class TestQuadraticBatchSchedule:
         )
 
         assert isinstance(scheduler, LRScheduler)
+
+
+class TestCurvedBatchSchedule:
+    """Test curved (polynomial) batch size growth scheduler."""
+
+    def test_high_exponent_slow_start_fast_finish(self):
+        """High exponent (>2) should have very slow start, rapid finish."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=100,
+            final_batch_size=500,
+            num_training_steps=10,
+            polynomial_exponent=4.0,
+        )
+
+        values = []
+        for _ in range(10):
+            scheduler.step()
+            values.append(optimizer.param_groups[0]["lr"])
+
+        # First half should change very little
+        first_half_growth = values[4] - values[0]
+        # Second half should change a lot
+        second_half_growth = values[-1] - values[4]
+
+        assert (
+            second_half_growth > first_half_growth * 3
+        )  # Should be much more growth in second half
+
+    def test_low_exponent_fast_start_slow_finish(self):
+        """Low exponent (<1) should have rapid start, slow finish."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=100,
+            final_batch_size=500,
+            num_training_steps=10,
+            polynomial_exponent=0.5,
+        )
+
+        values = []
+        for _ in range(10):
+            scheduler.step()
+            values.append(optimizer.param_groups[0]["lr"])
+
+        # First half should change a lot
+        first_half_growth = values[4] - values[0]
+        # Second half should change less
+        second_half_growth = values[-1] - values[4]
+
+        assert first_half_growth > second_half_growth
+
+    def test_linear_growth(self):
+        """Exponent=1.0 should produce linear growth."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=100,
+            final_batch_size=200,
+            num_training_steps=10,
+            polynomial_exponent=1.0,
+        )
+
+        values = []
+        for _ in range(10):
+            scheduler.step()
+            values.append(optimizer.param_groups[0]["lr"])
+
+        # Growth should be approximately constant
+        growth_rates = [values[i + 1] - values[i] for i in range(len(values) - 1)]
+
+        # All growth rates should be similar (within 1% tolerance)
+        avg_growth = sum(growth_rates) / len(growth_rates)
+        for rate in growth_rates:
+            assert rate == pytest.approx(avg_growth, rel=0.01)
+
+    def test_starts_near_initial(self):
+        """Early values should be near initial_batch_size."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=5,
+            polynomial_exponent=2.0,
+        )
+
+        # Step 1
+        scheduler.step()
+        first_value = optimizer.param_groups[0]["lr"]
+
+        # Should be close to initial but slightly higher
+        assert 64 < first_value < 100
+
+    def test_ends_at_final(self):
+        """Last value should reach final_batch_size."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=32,
+            final_batch_size=512,
+            num_training_steps=8,
+            polynomial_exponent=3.0,
+        )
+
+        # Steps 1-8
+        for _ in range(8):
+            scheduler.step()
+
+        final_value = optimizer.param_groups[0]["lr"]
+        assert final_value == pytest.approx(512, rel=0.01)
+
+    def test_invalid_exponent_raises(self):
+        """Exponent <= 0 should raise assertion error."""
+        optimizer = create_mock_optimizer()
+
+        with pytest.raises(AssertionError):
+            get_curved_batch_schedule(
+                optimizer,
+                initial_batch_size=32,
+                final_batch_size=256,
+                num_training_steps=10,
+                polynomial_exponent=0.0,
+            )
+
+        with pytest.raises(AssertionError):
+            get_curved_batch_schedule(
+                optimizer,
+                initial_batch_size=32,
+                final_batch_size=256,
+                num_training_steps=10,
+                polynomial_exponent=-1.0,
+            )
+
+    def test_is_lr_scheduler(self):
+        """Should be instance of LRScheduler."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=32,
+            final_batch_size=256,
+            num_training_steps=10,
+            polynomial_exponent=2.5,
+        )
+
+        assert isinstance(scheduler, LRScheduler)
+
+    def test_decay_with_high_exponent(self):
+        """Should also work for decay (initial > final) with high exponent."""
+        optimizer = create_mock_optimizer()
+        scheduler = get_curved_batch_schedule(
+            optimizer,
+            initial_batch_size=500,
+            final_batch_size=100,
+            num_training_steps=10,
+            polynomial_exponent=3.0,
+        )
+
+        values = []
+        for _ in range(10):
+            scheduler.step()
+            values.append(optimizer.param_groups[0]["lr"])
+
+        # Should decay slowly at first, rapidly later
+        first_half_decay = values[0] - values[4]
+        second_half_decay = values[4] - values[-1]
+
+        assert second_half_decay > first_half_decay
+        assert values[-1] == pytest.approx(100, rel=0.01)
 
 
 if __name__ == "__main__":
