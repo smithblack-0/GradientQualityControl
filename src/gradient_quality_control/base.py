@@ -42,6 +42,7 @@ class AbstractOptimizerWrapper(Optimizer):
         self.num_steps = 0
         self.num_draws = 1  # One draw because we had to take one batch.
         self.last_grad_norm = None
+        self.last_step_num_draws = None
 
         self.parameters = []
         for group in self.optimizer.param_groups:
@@ -74,6 +75,7 @@ class AbstractOptimizerWrapper(Optimizer):
         self.last_grad_norm = torch.nn.utils.get_total_norm(grads)
         self.last_optimizer_result = self.optimizer.step(closure)
         self.optimizer.zero_grad()
+        self.last_step_num_draws = self.num_draws
         self.num_steps += 1
         self.num_draws = 0
 
@@ -84,6 +86,7 @@ class AbstractOptimizerWrapper(Optimizer):
             "steps": self.num_steps,
             "num_draws": self.num_draws,
             "last_mean_grad_norm": self.last_grad_norm,
+            "last_step_num_draws": self.last_step_num_draws,
         }
 
     def __getattr__(
