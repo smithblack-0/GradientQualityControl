@@ -7,6 +7,7 @@ from .gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
 from .metric_hypothesis_test import OptimizerWrapperMHT
 from .scheduled_batch_controller import OptimizerWrapperSBC
 from .scheduling_utils import (
+    get_curved_batch_schedule,
     get_direct_cosine_annealing_with_warmup,
     get_norm_threshold_cosine_annealing_with_warmup,
     get_quadratic_batch_schedule,
@@ -22,6 +23,7 @@ __all__ = [
     "get_quadratic_batch_schedule",
     "get_direct_cosine_annealing_with_warmup",
     "get_norm_threshold_cosine_annealing_with_warmup",
+    "get_curved_batch_schedule",
     "__version__",
 ]
 

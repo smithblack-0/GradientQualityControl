@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torch-gqc"
-version = "0.8.0"
+version = "0.8.1"
 description = "Adaptive gradient accumulation for improved training efficiency"
 readme = "README.md"
 license = {text = "MIT"}
