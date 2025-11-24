@@ -90,6 +90,6 @@ When we accumulate gradients until the norm drops below a threshold, we are impl
 
 ## Empirical Observations
 
-So far the next generation of controller suggests, based on from 125M parameter LLM pretraining on C4, that the Gradient noise ratio is at least 0.2 late in training. Exact measurements will have to wait until dedicated experiments, however. In the prior generation, ratios as low as 0.01 were sometimes detected. See 
+So far the next generation of controller suggests, based on from 125M parameter LLM pretraining on C4, that the Gradient noise ratio is at least 0.2 late in training. Exact measurements will have to wait until dedicated experiments, however. In the prior generation, ratios as low as 0.01 were sometimes detected. See examples/Gradient_Cleaner_Controller_Ablations.ipynb, and consider loading it in a colab cell.
 
 

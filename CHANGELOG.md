@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.3
+
+- Example is installed.
+- A few more documentation changes. 
+
 ## 0.8.2
 
 - statistic "last_step_num_draws" added.
