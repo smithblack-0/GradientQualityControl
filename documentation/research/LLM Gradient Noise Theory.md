@@ -4,11 +4,11 @@
 
 ## How We Got Here
 
-This project began as an adaptive batch size tuner using gradient accumulation. The results were unexpectedly strong - approximately 30% perplexity improvement relative to control. This was pursued across a variety of architectures, and appeared tied to noise in the gradients.
+This project began as an adaptive batch size tuner using gradient accumulation. The results were unexpectedly strong - approximately 25% perplexity improvement relative to control. The effect was pursued across a variety of architectures, and appeared tied to noise in the gradients. Specifically, controller variants that tended to produce locally adiablatic gradient norms tended to drastically improve performance. As such, I tried to apply gradient noise scale theory to correct the issue and derive an ideal controller.
 
 The Gradient Noise Scale (GNS) framework developed by McCandish et al. was a perfect solution. And the story would have ended if it worked. It did not. GNS-based controllers did not produce acceptable performance in our LLM pretraining experiments. While conjecture, we believe the curvature of the Hessian is changing drastically over training, making any controller useless as it will either over or under-specify the batch size as the training curvature changes.
 
-A different, more robust theoretical framework was required. This framework is what is described in this section, along with a bit about what has been observed so far under it.
+A different, more robust theoretical framework was required, and controllers based in this theory. This framework is what is described in this section, along with a bit about what has been observed so far under it and how the controller works in theory.
 
 ## Core Theory: Gradient Noise as Vector Cancellation
 
@@ -24,19 +24,20 @@ If I am to measure something as nebulous as how much 'generalization' signal exi
 
 * **Generalization is the ability to apply a common strategy in a wide variety of situations**
 
-Under this assumption, a generalization strategy is useful more or less everywhere. *Aha*. Usefully, this has a physical meaning in terms of gradient vectors. If we agree training signals useful to generalization are strategies that work everywhere, then in theory the mean of the gradient vectors across all examples should produce a 'perfectly general' training signal.
+Under this assumption, a generalization strategy is useful more or less everywhere. *Aha*. Usefully, this has a physical meaning in terms of gradient vectors. If we agree training signals useful to generalization are strategies that work everywhere, then in theory the mean of the gradient vectors across all training examples should produce a 'perfectly general' training signal within the training distribution.
 
-This does not make it optimal to train on. Some level of noise is likely fine, though what is fine may change as training proceeds. There will be some balance that must be found between compute spent to denoise the system and compute spent to advance a model's strategy. Nonetheless, this at least gives us a target. We conclude as priors for formal mathematics that:
+ We conclude as priors for the formal mathematics that:
 
 * The best generalization signal in the gradients is the mean of the gradients across all examples
 * The task of any controller is to find the best balance between improving gradient quality and taking more steps.
 * A way of even approximating how close we are to the true signal would be invaluable.
+* GNS was an attempt to find this balance. It however failed for small-scale LLMs.
 
-It was under these conditions we began to examine noise theory and gradient norms.
+It was under these conditions we began to reexamine noise theory and gradient norms.
 
 ### Gradient Noise Model
 
-We've established what we want to measure - distance from the true mean gradient. To build a measurement, we first need a mathematical framework for how noise behaves when we sample gradients.
+To build a measurement, we first need a mathematical framework for how noise behaves when we sample gradients.
 
 At training step $t$, we model each minibatch gradient as a random draw from a multivariate Gaussian distribution:
 
@@ -60,9 +61,9 @@ We've identified an observable signal - averaging gradients reduces their expect
 
 We cannot directly compute a signal-to-noise ratio (SNR) because we don't have access to the true signal $\boldsymbol{\mu}_t$ or the noise covariance $\boldsymbol{\Sigma}_t$. However, we can bound the SNR using quantities that are measurable during training: the expected single-batch gradient norm and the norm of averaged gradients.
 
-Define the **Gradient Norm Ratio (GNR)** at step $t$ as:
+Define the **Gradient Magnitude Ratio (GMR)** at step $t$ as:
 
-$$\text{GNR}_t = \frac{\mathbb{E}_n[\|G_{tn}\|]}{\|\bar{G}_t\|}$$
+$$\text{GMR}_t = \frac{\mathbb{E}_n[\|G_{tn}\|]}{\|\bar{G}_t\|}$$
 
 where $\mathbb{E}_n[\|G_{tn}\|]$ is the expected magnitude of single-batch gradients and $\|\bar{G}_t\|$ is the magnitude after averaging $N$ samples.
 
@@ -70,26 +71,30 @@ This ratio directly quantifies the magnitude reduction due to noise cancellation
 
 In practice, this can be estimated during training by drawing multiple batches, computing the mean of their individual norms, and dividing by the norm of their average. For example, drawing 100 batches and computing:
 
-$$\text{GNR}_t \approx \frac{\frac{1}{100}\sum_{n=1}^{100} \|G_{tn}\|}{\left\|\frac{1}{100}\sum_{n=1}^{100} G_{tn}\right\|}$$
+$$\text{GMR}_t \approx \frac{\frac{1}{100}\sum_{n=1}^{100} \|G_{tn}\|}{\left\|\frac{1}{100}\sum_{n=1}^{100} G_{tn}\right\|}$$
 
 provides a reasonable estimate of current gradient noise levels and overall training health.
 
-### Connecting to Norm-Based Control
+### The Controller Problem
 
-This formalization reveals why controlling gradient norms actually controls signal quality. From the GNR definition:
+While GMR provides the ideal measurement of signal-to-noise ratio, it does not provide an ideal controller. At certain stages of training, noise is tolerable or even beneficial; taking more optimizer steps at higher noise can outperform fewer steps at lower noise. Indeed, a controller tested which attempted to always get within a certain threshold of $\mu$ performed very poorly. Nonetheless, lower noise is required late in training, a task traditionally achieved using learning rate schedules.
 
-$$\|\bar{G}_t\| = \frac{\mathbb{E}_n[\|G_{tn}\|]}{\text{GNR}_t}$$
+To accommodate both necessary conditions, we can use a controller based on gradient norms.  Given two mean gradients produced by different amounts of batch accumulation with the same training parameters, the gradient with the lower norm (more accumulation) has higher signal-to-noise ratio. This follows from the noise cancellation mechanism: more averaging removes more noise, reducing the norm closer to ||μ_t||.
 
-Setting a threshold on the averaged gradient norm $\|\bar{G}_t\| < \theta$ is equivalent to requiring:
+The control theory becomes straightforward: set a gradient norm threshold and accumulate batches until the mean gradient norm drops below it. This is exactly what the GNTS controller does.  By scheduling this threshold over training, we directly control the effort-quality tradeoff - higher thresholds early (more steps, higher noise) and lower thresholds late (cleaner gradients). This even entirely replaces learning rate scheduling, as it directly controls the relevant gradient feature - step size - that we were controlling implicitly through learning rate schedules.
 
-$$\text{GNR}_t > \frac{\mathbb{E}_n[\|G_{tn}\|]}{\theta}$$
-
-Since $\mathbb{E}_n[\|G_{tn}\|]$ is approximately constant (the per-sample noise level), this requirement enforces a minimum GNR value, which is exactly a maximum allowable noise fraction.
-
-When we accumulate gradients until the norm drops below a threshold, we are implicitly accumulating until enough noise has cancelled to achieve our target signal-to-noise ratio. The gradient norm directly encodes noise level through the cancellation mechanism - it is not an arbitrary heuristic but a measurement of the quantity we care about.
+The gradient norm directly encodes noise level through the cancellation mechanism - it is not an arbitrary heuristic but a measurement associated with the quantity we care about. It is packaged in a way that lets us demand more quality according to a schedule. It also provides a reactive mechanism to noise, as norm spikes are responded to by drawing extra batches instead, and keeps per-parameter gradient variance consistent which is optimal for optimizers such as Adam.
 
 ## Empirical Observations
 
-So far the next generation of controller suggests, based on from 125M parameter LLM pretraining on C4, that the Gradient noise ratio is at least 0.2 late in training. Exact measurements will have to wait until dedicated experiments, however. In the prior generation, ratios as low as 0.01 were sometimes detected. See examples/Gradient_Cleaner_Controller_Ablations.ipynb, and consider loading it in a colab cell.
+So far the next generation of controller suggests, based on from 125M parameter LLM pretraining on C4, that the Gradient noise ratio is at least 0.2 late in training. Exact measurements will have to wait until dedicated experiments, however. In the prior generation, ratios as low as 0.01 were sometimes detected. See examples/Gradient_Cleaner_Controller_Ablations.ipynb, and consider loading it in a colab cell. Some one-off experiments have detected the true gradient norms tend to be around 0.1 for LLMs in fact. 
 
+It should be noted that experiments were performed on different varieties of controllers, and perhaps without the full level of rigor expected by the paper. Nonetheless, the generation 1 experiments extended over 50m to 800m in size across several architectures and datatypes, and there is absolutely nothing wrong with the control measurements or even the measurements of maximum observed norm ratios.
 
+## Provisional Implications
+
+These implications must be considered provisional. They are bound primarily to LLM systems between 50m-800m, and are not a sufficiently dense grid to surpass provisional status. They are, however, at this point extremely suggestive.
+
+* Gradients are Noisy: This has been known for awhile. However, the level of noise is phenomenal. Depending on how you measure, it can be as little as 80% noise to as high as 98% noise under some situations. This is not the issue
+* Noisy gradients are harming training: This is the issue. It is probably a combination of nonlinear response and slowing the optimizers down. Taking 5 steps with 80% noise is not the same as taking 1 step with 16% noise, whatever the optimizer theory suggests.
+* Gradient Magnitude Ratios are a better model of gradient noise in LLMs in the 

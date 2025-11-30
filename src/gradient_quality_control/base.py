@@ -72,7 +72,7 @@ class AbstractOptimizerWrapper(Optimizer):
             grads.append(param.grad)
 
         # Take step.
-        self.last_grad_norm = torch.nn.utils.get_total_norm(grads)
+        self.last_grad_norm = torch.nn.utils.get_total_norm(grads).item()
         self.last_optimizer_result = self.optimizer.step(closure)
         self.optimizer.zero_grad()
         self.last_step_num_draws = self.num_draws
@@ -95,3 +95,30 @@ class AbstractOptimizerWrapper(Optimizer):
     ):
         """Route everything not explicitly set  to the underlying optimizer."""
         return getattr(self.optimizer, name)
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Returns a functional statedict"""
+        output = {
+            "last_optimizer_result": self.last_optimizer_result,
+            "last_step_num_draws": self.last_step_num_draws,
+            "num_batches": self.num_batches,
+            "num_steps": self.num_steps,
+            "num_draws": self.num_draws,
+            "last_mean_grad_norm": self.last_grad_norm,
+            "optimizer": self.optimizer.state_dict(),
+        }
+        return output
+
+    def load_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+    ):
+        """Loads optimizer state dict and underlying training functionality"""
+        self.last_optimizer_result = state_dict["last_optimizer_result"]
+        self.last_step_num_draws = state_dict["last_step_num_draws"]
+        self.num_batches = state_dict["num_batches"]
+        self.num_steps = state_dict["num_steps"]
+        self.num_draws = state_dict["num_draws"]
+        self.last_grad_norm = state_dict["last_mean_grad_norm"]
+        self.last_step_num_draws = state_dict["last_step_num_draws"]
+        self.optimizer.load_state_dict(state_dict["optimizer"])

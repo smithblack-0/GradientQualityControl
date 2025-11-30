@@ -3,6 +3,7 @@ Tests for AbstractOptimizerWrapper base class.
 Focus on external behavioral contracts.
 """
 
+import json
 from unittest.mock import Mock
 
 import pytest
@@ -143,6 +144,84 @@ def test_optimizer_step_increments_steps():
     wrapper._take_optimizer_step()
     after = wrapper._get_base_statistics()["steps"]
     assert after == initial + 1
+
+
+# ---------------------------------------------------------------------------
+# State Dict Contract Tests
+# ---------------------------------------------------------------------------
+
+
+def test_save_load_roundtrip_preserves_behavior():
+    """After save/load, wrapper behaves identically."""
+    mock_opt1, params1 = create_mock_optimizer(num_params=1, param_shape=(3,))
+    wrapper1 = ConcreteWrapper(mock_opt1)
+
+    # Execute some operations
+    wrapper1._take_batch_step()
+    wrapper1._take_batch_step()
+    params1[0].grad = torch.tensor([3.0, 4.0, 0.0])
+    wrapper1._take_optimizer_step()
+    wrapper1._take_batch_step()
+
+    # Get statistics before save
+    stats_before = wrapper1._get_base_statistics()
+
+    # Save and load into new wrapper
+    state = wrapper1.state_dict()
+    mock_opt2, params2 = create_mock_optimizer(num_params=1, param_shape=(3,))
+    wrapper2 = ConcreteWrapper(mock_opt2)
+    wrapper2.load_state_dict(state)
+
+    # Statistics should match
+    stats_after = wrapper2._get_base_statistics()
+
+    assert stats_before == stats_after
+
+
+def test_continued_training_after_load():
+    """Can continue training seamlessly after load."""
+    mock_opt1, params1 = create_mock_optimizer(num_params=1, param_shape=(2,))
+    wrapper1 = ConcreteWrapper(mock_opt1)
+
+    wrapper1._take_batch_step()
+    params1[0].grad = torch.tensor([2.0, 2.0])
+    wrapper1._take_optimizer_step()
+
+    state = wrapper1.state_dict()
+
+    # Load and continue
+    mock_opt2, params2 = create_mock_optimizer(num_params=1, param_shape=(2,))
+    wrapper2 = ConcreteWrapper(mock_opt2)
+    wrapper2.load_state_dict(state)
+
+    # Should be able to continue taking steps
+    wrapper2._take_batch_step()
+    params2[0].grad = torch.tensor([4.0, 4.0])
+    wrapper2._take_optimizer_step()  # Should not raise
+
+    stats = wrapper2._get_base_statistics()
+    assert stats["steps"] == 2  # One from before, one after
+
+
+def test_state_dict_is_serializable():
+    """State dict can be serialized (for checkpointing)."""
+    mock_opt, _ = create_mock_optimizer()
+    wrapper = ConcreteWrapper(mock_opt)
+
+    state = wrapper.state_dict()
+
+    # Should be JSON serializable (or at least dict of primitives)
+    # This is a proxy for "can be saved to disk"
+    try:
+        # Convert tensors to floats if present
+        serializable_state = {
+            k: v.item() if torch.is_tensor(v) and v.numel() == 1 else v
+            for k, v in state.items()
+            if k != "optimizer"
+        }
+        json.dumps(serializable_state)
+    except (TypeError, ValueError):
+        pytest.fail("State dict not serializable")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.4
+
+State update. You can now use .state_dict and .load_state_dict to resume training seamlessly.
+- Minor other documentation changes. 
+
 ## 0.8.3
 
 - Example is installed.
