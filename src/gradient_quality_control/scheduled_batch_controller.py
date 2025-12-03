@@ -26,10 +26,6 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         The underlying optimizer to wrap
     physical_batch_size : int
         The batch size of each microbatch
-    initial_logical_batch_size : int, optional (default: None)
-        Initial target logical batch size. If None, defaults to physical_batch_size
-        (i.e., no accumulation). This sets the initial 'lr' which schedulers can
-        override.
     max_batch_draws : int, optional (default: 64)
         Maximum accumulation steps before forcing an optimizer step
     """
@@ -38,7 +34,6 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         self,
         optimizer: torch.optim.Optimizer,
         physical_batch_size: int,
-        initial_logical_batch_size: Optional[float] = None,
         max_batch_draws: int = 64,
     ):
         super().__init__(optimizer)
@@ -46,12 +41,8 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         self.physical_batch_size = physical_batch_size
         self.max_draws = max_batch_draws
 
-        # Set initial logical batch size (scheduler can override)
-        if initial_logical_batch_size is None:
-            initial_logical_batch_size = physical_batch_size
-
         # Scheduler controls target logical batch size via 'lr'
-        self.param_groups = [{"lr": float(initial_logical_batch_size)}]
+        self.param_groups = [{"lr": float(1.0)}]
 
         # Note: self.parameters is constructed in base class.
 
