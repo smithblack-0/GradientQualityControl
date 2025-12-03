@@ -44,22 +44,6 @@ class TestTargetDrawsCalculation:
         wrapper.param_groups[0]["lr"] = 10.0
         assert wrapper.target_draws == 1
 
-    def test_default_initial_batch_size(self):
-        mock_opt, _ = create_mock_optimizer()
-        wrapper = OptimizerWrapperSBC(mock_opt, physical_batch_size=64)
-
-        # Default: logical = physical, so target_draws = 1
-        assert wrapper.target_draws == 1
-
-    def test_custom_initial_batch_size(self):
-        mock_opt, _ = create_mock_optimizer()
-        wrapper = OptimizerWrapperSBC(
-            mock_opt, physical_batch_size=32, initial_logical_batch_size=128
-        )
-
-        # 128 / 32 = 4
-        assert wrapper.target_draws == 4
-
 
 class TestControllerBehavior:
     """Test stepping behavior based on scheduled batch size."""
@@ -80,8 +64,10 @@ class TestControllerBehavior:
     def test_accumulates_until_target_draws(self):
         mock_opt, params = create_mock_optimizer()
         wrapper = OptimizerWrapperSBC(
-            mock_opt, physical_batch_size=32, initial_logical_batch_size=96  # 96/32 = 3 draws
+            mock_opt,
+            physical_batch_size=32,
         )
+        wrapper.param_groups[0]["lr"] = 96  # 96/32 = 3 draws
 
         # First draw
         for p in params:
@@ -107,9 +93,9 @@ class TestControllerBehavior:
         wrapper = OptimizerWrapperSBC(
             mock_opt,
             physical_batch_size=32,
-            initial_logical_batch_size=1000,  # Would need 31 draws
             max_batch_draws=5,
         )
+        wrapper.param_groups[0]["lr"] = 1000  # would need 31 draws
 
         # Accumulate up to max_draws
         for i in range(5):

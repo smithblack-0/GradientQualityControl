@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.5
+
+- Bugfix: SBC should always start with a learning rate of 1.0 for the scheduling system to work properly. Obsoleted manual setter. 
+
 ## 0.8.4
 
 State update. You can now use .state_dict and .load_state_dict to resume training seamlessly.
