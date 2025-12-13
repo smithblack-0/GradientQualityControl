@@ -78,7 +78,7 @@ for inputs, labels in train_loader:
     scheduler.step()
 ```
 
-In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications.
+In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications. We would also tend to reduce the physical batch size down to as low as achieves good gpu occupancy.
 
 ```python
 from gradient_quality_control import OptimizerWrapperGNTS, get_norm_threshold_cosine_annealing_with_warmup
@@ -169,6 +169,7 @@ Note that attaching the schedule to the OptimizerWrapperGNTS instead made it set
 **Important: Norm scheduler warmup should be inverted from LR warmup**
 - LR warmup: start low (0.0) → ramp up to peak
 - Norm warmup: start high (example 5.0) → ramp down to target (1.0)
+**Important: Generally, you should set your physical batch size to as small as is possible while reliably achieving gpu occupancy for best performance**
 
 ## Distributed Compatibility.
 
