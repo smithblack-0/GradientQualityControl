@@ -1,58 +1,42 @@
 # Gradient Quality Control
 
-**Gradient Quality Control (GQC)** is a training paradigm that improves gradient quality by means other than datasource filtering before the gradients ever reach the optimizer. Most of our algorithms do this by drawing additional samples adaptively, rather than relying on post-facto optimizer denoising mechanisms that primarily slow down training. This tends to significantly improve pretraining speed.
+**Gradient Quality Control (GQC)** is a library that improves gradient quality by means other than datasource filtering before the gradients ever reach the optimizer. This library provides production-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. 
 
-This library provides production-grade, drop-in optimizer wrappers implementing GQC algorithms via adaptive sampling. The solution is a new kind of **component** lying orthogonal to standard optimizers that preconditions the gradients to a higher quality before the optimizers ever observe them. These **Gradient Cleaner** wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. **They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.**
+The solution is a new kind of **component** lying orthogonal to standard optimizers that preconditions the gradients to a higher quality before the optimizers ever observe them. These **Gradient Cleaner** wrappers dynamically vary batch size through gradient accumulation to maintain consistent gradient quality, significantly improving token sample efficiency during pretraining. **They operate in constant memory, are compatible with almost any pytorch optimizer, and require minimal training loop changes.**
 
-Full understanding of the phenomenon is currently at a 'research-grade' level, but appears likely to scale nicely and, at minimum, is extremely beneficial when training small-scale models.
+## What do I do to use this?
 
-## What do I do do use this?
+This library requires proficiency in adding and lightly modifying torch training loops to use, and requires the ability to follow a guide. It is implemented as a minimally invasive optimizer-wrapper in pytorch. Jump down to getting started for full steps.
 
-This library requires proficiency in adding and lightly modifying torch training loops to use.
+## How does it work?
 
-You replace nothing. You still operate using your standard training loop, and add a component. Using the library is more akin to adding gradient clipping to a transformer without it than swapping a component such as replacing SGD with AdamW. Notably, as the underlying mechanism is just a special version of gradient accumulation, anything that can perform gradient accumulation is in theory compatible with these algorithms.
+The system is literally implemented as an optimizer-wrapper that takes over invoking zero_grad() and .step() from the user. The module then decides when to take a step, performing gradient accumulation and increasing gradient quality proportionally. Some Cleaners apply other tricks as well, but they all act as optimizer wrappers to improve gradient quality before the gradients hit the optimizers themselves. 
 
-The system is literally implemented as an optimizer-wrapper that takes over invoking zero_grad() and .step() from the user. The module then decides when to take a step, performing gradient accumulation and increasing gradient quality proportionally. Some Cleaners apply other tricks as well, but they all act as optimizer wrappers to improve gradient quality before the gradients hit the optimizers themselves.
+The main cleaner is currently the Gradient Norm Threshold Scheduler (GNTS) variety aims to keep the gradient norms below a particular threshold, and this threshold is then scheduled.
 
-## I wandered off the internet when I heard about this. Can you provide some intuition?
+## Why would I want it?
 
-First, understand this is just our best guess right now. We are still trying to understand the underlying mechanism. But this is what we think is happening.
+Two main reasons
 
-We have been feeding our models with gasoline (gradients) that is 98% water and kludged together enough weird tricks our models to tolerate that. 
+1) **It largely eliminates batch tuning as a hyperparameter**. The system works best when you choose a physical batch size that just reaches full gpu occupancy. GNTS and other controllers then maintain the same logical batch size largely invarient of the physical batch size, and the right hyperparameters are relatively robust across token numbers and model sizes.
+2) **It gains you a little extra performance on well-tuned models**: Even when the model has already been tuned, the reactive nature of the GNTS controller ensures it draws more batches when the gradients gets noisy, which tends to improve training efficiency by a few percentage. 
 
-If we instead boil away the water in the first place, the engines (models) run faster. Even better we can probably make higher-precision engines that could not run on water-gasoline in the first place. Boiling away the water takes energy (compute), but we run so much faster it is worth it.
+Overall, the most promising outcome is perhaps not necessary the gains, but the ability to trust during research that the batch hyperparameter will be set to sane values and the model will automatically recover if the gradients get more noisy. It thus has a natural niche at small or medium scale labs or startups that cannot afford full tuning, but there is no reason not to use it on any single-device training run as far as we can tell. Large scale labs or companies will likely see less benefit, as Distributed Data training will tend to already push the batch size well above what GQC would have naturally chosen.
 
-Sometimes the water becomes steam, actually adding power, but the effect varies depending on the rpm the engine is at  (stage of pretraining). So we need to change the ratio as training continues (gradient norm magnitude scheduling).
+## Notable outcomes
 
- Analogy is not guaranteed to work for all theory aspects. We will attempt to update this analogy as more information is uncovered.
+Claimed results are preliminary and small-scale, and should be interpreted as suggestive rather than definitive. Results are currently listed in terms of the current generation of controller, GNTS.
 
-##  Notable outcomes
-
-Claimed results are preliminary and small-scale, and should be interpreted as suggestive rather than definitive. However, the success of the effect across multiple controller variations should be interpreted as 'highly suggestive' and extends many scaling priors. Work to provide full experimental harnesses for all axes at a **production** level is ongoing. Feel free to get involved!
-
-Notable outcomes so far showing some strengths and limitations include:
-
-| Event                                  | Outcome                             |
-|----------------------------------------|-------------------------------------|
-| 50m model trained on 282m tokens       | 41% improvement in perplexity       |
-| 50m test vs 800m control               | 5% improvement in perplexity at 50m |
-| 50m model tried at various batch sizes | logical batch size largely the same |
-| 50m test model on multiepoch task      | converged to a worse floor          |
-
-
-Stated for lay audiences: The same model ends up much better, and the results are significant enough to beat a model 16x larger.
-
-There are limitations.
-
-* No fine tuning has been tested yet.
-* We may be improving small and midscale model behavior to match large model behavior; it is unknown whether this scales.
-* Some of these results were found using the old, less effective controller, but as part of the same research push.
+| Event                                                                  | Outcome                             |
+|------------------------------------------------------------------------|-------------------------------------|
+| gpt2-small model setup to Karparthy tuned standards vs GNTS tuned | about a 5% gain in perplexity       |
+| gpt2-small catastrophically mistuned batch size vs GNTS tuned     | about a 30% gain in perplexity      |
 
 # For Practitioners
 
 ## Getting Started 
 
-Getting started with GQC is straightforward. We discuss a quickstart guide here.
+Getting started with GQC is straightforward. 
 
 First, install the library from PyPi
 
@@ -63,6 +47,7 @@ pip install torch-gqc
 Now, suppose we have a classical learning loop, something like
 
 ```python
+train_loader = get_train_loader(batch_size = 64)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 scheduler = get_cosine_annealing_schedule(optimizer, warmup_steps=500, ...)
 for inputs, labels in train_loader:
@@ -78,13 +63,13 @@ for inputs, labels in train_loader:
     scheduler.step()
 ```
 
-In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications. We would also tend to reduce the physical batch size down to as low as achieves good gpu occupancy.
+In GQS-AS, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. Note when taking a mean of microbatch gradients extra batches tend to decrease the norms, which has warmup implications. We would also tend to reduce the physical batch size down to as low as achieves good gpu occupancy, as gradient accumulation will make it larger.
 
 ```python
 from gradient_quality_control import OptimizerWrapperGNTS, get_norm_threshold_cosine_annealing_with_warmup
 
 ...
-
+train_loader = get_train_loader(batch_size = 8)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 lr_scheduler = get_constant_schedule_with_warmup (optimizer, warmup_steps=500, ...)
 
@@ -120,6 +105,7 @@ from gradient_quality_control import OptimizerWrapperGNTS, NormWarmupScheduler
 from tqdm import tqdm
 
 ...
+train_loader = get_train_loader(batch_size = 8)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 lr_scheduler = get_warmup_scheduler(optimizer, warmup_steps=500, ...)
@@ -173,47 +159,14 @@ Note that attaching the schedule to the OptimizerWrapperGNTS instead made it set
 
 ## Distributed Compatibility.
 
-Largely, since these operate by gradient accumulation, distributed capacity should 'just work'. 1.0 will work with DDP and related, but minor adjustments to hyperparameter thresholds according to provided formulas are likely needed. Advanced users should consult [Usage](documentation/usage.md) for the necessary formulas.
-
-## Limitations
-
-Fine-tuning performance is unknown, but likely to be suboptimal without significant retuning of regularization. Scaling behavior appears promising but has not been tested above 800m parameters. We conjecture that the norm schedule should be reduced in as you would clipping rules, but cannot prove it right now.
+Largely, since these operate by gradient accumulation, distributed capacity should 'just work'. 1.0 will work with DDP and related, but minor adjustments to hyperparameter thresholds according to provided formulas are likely needed. For the moment, consider multiplying GNTS thresholds by the square root of the number of devices until stronger empirical rules can be explored. If anyone wants to sponsor a study into it, I am available. 
 
 # For Researchers
-**Those interested only in how to use this library should stop reading here**
 
-GQC-AS operates as a Sequential Binary Decision Controller: after each microbatch, the system decides whether gradient quality is sufficient to step, or whether to accumulate another batch.
+Sufficient data has been gathered to state some conclusions about what this system is or is not doing. They are roughly as follows
 
-## Why does this work?
+1) **The primary effect GNTS has is to autotune batch size**: Going from a catastrophically mistuned case to a GNTS case illustrates this nicely. Getting rid of an optimization dimension, particularly in exploratory research, is very nice. The system requests the same logical batch size regardless of physical batch size as well.
+2) **Some performance is gained from the reactive nature of the controller**: When starting from canonically solid and tuned defaults (Karpathy's GPT2-small replication) the performance gains are real but more minor, around 5-10%.
+3) **The gradient noise scale did not corrolated properly with LLM performance**: We conjecture something in Adam is responsible, but the GNTS controller performed much better than the GNS controller. It looks like there are other reasons having isonorm gradients are beneficial to training.
 
-We don't know. It just does. Those who want a more formal verison of that are encouraged to jump into [theory](documents/research/results_and_thoery.md), those who want a simple summary can just keep reading. 
-
-Generation 1 analysis revealed paradoxes:
-
-- Control models show < 1° angle between Adam momentum and raw gradients on control cases (near-perfect alignment)
-- Yet accumulation can reduce gradient norms by a factor of 20, suggesting massive amounts of noise.
-- Generation 1 fitting produced data exponent β ≈ 0.35 (Kaplan tradition) WITHOUT hyperparameter tuning - normally this requires extensive search
-- The fit was unstable but suggestive of improved scaling behavior
-- Naive gaussian error theory with Adam Moments analysis suggests reducing noise but taking more steps should balance out; it clearly did not.
-
-The mathematics say with Adam more steps at higher noise is equivalent to less steps at higher lower noise. The empirics say removing the noise helps tremendously despite the signal already being present. We are much more confident than not that noise is being reduced than not and that is is helping and measurable, but paradoxically it is detectible by one means but not by another.
-
-One notable possible explanation is the reactive nature of most of the tests: Difficult batches usually cause more draws. This is the case with the GNS, GNTS, and MHT mode. We call this phenomenon **Anomaly Smoothing**. Given what has been observed, there is also a large likelyhood having gradients that are consistently the same magnitude is extremely beneficial as well. But if anomaly smoothing was the only effect, why did ensuring consistent gradient norm magnitudes in GNTS help too?
-
-Key unknowns:
-- What does accumulation actually do to gradient-momentum alignment? Where is the excess magnitude we are cancelling away living?
-- Is the anomaly smoothing the primary driver of the observed effects? The constant gradient magnitudes? The extra batches? Something else?
-- What explains the incongruency between angle measures and magnitude measures?- Is this an Adam-specific phenomenon or general to adaptive optimizers?
-- If we are removing noise, do approximate second order optimizers, such as Shampoo and K-FAC, do better with better curvature estimates?
-
-This is active research with incomplete theory. The results are too strong to ignore, but we cannot yet explain why they occur.
-
-## More details
-
-
-See [implementations](documentation/research/research_implementations.md) for a summary of what has been tested.
-See [theory](documents/research/results_and_thoery.md) for a discusson of what the emperical results have uncovered, and what implications it may have for optimizer theory, model design, and more.
-
-See the experiments folder at [experiments](examples) to view the research colabs used in the studies, replicate the results yourself, and draw your own conclusion. The "Budget" series of experiments can be reproduced in under 150$. Please credit this repository and the discussion inside, and switch to the formal paper when it comes out, when extending the results.
-
-Anyone with compute resources, publication experience, or even work offers are suggested. See [collaboration](documents/research/collaboration.md) for details, and consider it the document kept up to date.
+The previous scaling law study will shortly be redone. At the moment, the effect is confirmed and real, but the envelope of usefulness and the empirical laws for scaling are unknown. If anyone is interested in working with me on research, contact me at chrisoquinn.2@gmail.com.
