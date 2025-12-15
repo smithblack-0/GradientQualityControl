@@ -8,7 +8,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.gradient_quality_control.metric_hypothesis_test import OptimizerWrapperMHT
+from experimental.metric_hypothesis_test import OptimizerWrapperMHT
 
 
 def create_mock_optimizer(num_params=3, param_shape=(10,)):

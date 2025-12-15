@@ -1,10 +1,10 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from .base import AbstractOptimizerWrapper
-from .gradient_noise_scale import OptimizerWrapperGNS
-from .gradient_norm_rescalar import OptimizerWrapperGNR
+from experimental.gradient_noise_scale import OptimizerWrapperGNS
+from experimental.gradient_norm_rescalar import OptimizerWrapperGNR
 from .gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
-from .metric_hypothesis_test import OptimizerWrapperMHT
+from experimental.metric_hypothesis_test import OptimizerWrapperMHT
 from .scheduled_batch_controller import OptimizerWrapperSBC
 from .scheduling_utils import (
     get_curved_batch_schedule,

@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .base import AbstractOptimizerWrapper
+from base import AbstractOptimizerWrapper
 
 
 class OptimizerWrapperGNS(AbstractOptimizerWrapper):
@@ -103,7 +103,8 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         bool
             True if the optimizer stepped, False if still accumulating.
         """
-        # Get gradient norm for this microbatch.
+        # Get gradient norm for this microbatch, and true
+        # norm of the accumulator
         current_grad_norm = self._get_independent_grad_norms(self.parameters)
         self.grad_norms.append(current_grad_norm)
 

@@ -55,7 +55,7 @@ def get_norm_threshold_cosine_annealing_with_warmup(
     Create a norm threshold scheduler with inverted warmup and cosine annealing.
     The norm threshold version has the questionable distinction that it's warmup
     is inverted, requiring instead starting with a threshold higher than the start
-    norm target. This accomodates that, and directly sets the threshold after
+    norm target. This accommodates that, and directly sets the threshold after
     warmup to start norm then begins annealing.
 
     Schedule phases:

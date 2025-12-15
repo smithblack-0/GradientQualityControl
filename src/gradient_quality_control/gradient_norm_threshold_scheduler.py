@@ -9,6 +9,7 @@ cleaning too.
 from typing import Any, Callable, Dict, Optional
 
 import torch
+from jinja2.optimizer import Optimizer
 
 from .base import AbstractOptimizerWrapper
 
@@ -61,7 +62,8 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         # but we instead interpret it as the gradient norm threshold
         self.param_groups = [{"lr": 1.0}]
 
-        # Other kinds of initialization.
+        # Other kinds of initialization, including
+        # the weight decay subsystem
         self.max_draws = max_batch_draws
 
         # Note: self.parameters is constructed in base class.

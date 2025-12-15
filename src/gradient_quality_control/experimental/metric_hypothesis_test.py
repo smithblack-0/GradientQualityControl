@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from scipy import stats
 
-from .base import AbstractOptimizerWrapper
+from base import AbstractOptimizerWrapper
 
 
 class OptimizerWrapperMHT(AbstractOptimizerWrapper):
