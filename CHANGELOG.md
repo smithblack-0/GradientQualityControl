@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.6
+
+- Bugfix: Optimizer wrapper did not actually behave like wrapped optimizer. Fixed.
+- A wide variety of changes to the readme. 
+
 ## 0.8.5
 
 - Bugfix: SBC should always start with a learning rate of 1.0 for the scheduling system to work properly. Obsoleted manual setter. 

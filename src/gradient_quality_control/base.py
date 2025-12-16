@@ -2,7 +2,7 @@
 The base class largely takes care of common bookkeeping
 issues related to the fact that we may take many minibatch samples
  before stepping the optimizer. This includes ensuring we use
-mean gradients for optimization. amd logging and reporting
+mean gradients for optimization, logging and reporting
 of statistics.
 """
 
@@ -49,6 +49,9 @@ class AbstractOptimizerWrapper(Optimizer):
             for p in group["params"]:
                 self.parameters.append(p)
 
+        # Finish initialization
+        self._initialized = True
+
     def _take_batch_step(self):
         self.num_batches += 1
         self.num_draws += 1
@@ -89,12 +92,62 @@ class AbstractOptimizerWrapper(Optimizer):
             "last_step_num_draws": self.last_step_num_draws,
         }
 
-    def __getattr__(
+    def __getattribute__(
         self,
         name: str,
-    ):
-        """Route everything not explicitly set  to the underlying optimizer."""
-        return getattr(self.optimizer, name)
+    ) -> Any:
+        """
+        Forwards attribute access to the wrapped optimizer while preserving normal
+        inheritance for this wrapper and its subclasses.
+
+        This allows the wrapper to satisfy isinstance(obj, Optimizer) checks while
+        transparently exposing the wrapped optimizer's interface to users. Achieved
+        by walking the MRO chain until reaching Optimizer, using normal lookup for
+        anything found before that point, and forwarding everything else.
+        """
+        # Walk MRO until we hit Optimizer, check if attribute is in any class dict
+        for cls in type(self).__mro__:
+            if cls is Optimizer:
+                break
+            if name in cls.__dict__:
+                return object.__getattribute__(self, name)
+
+        # Check instance attributes
+        instance_dict = object.__getattribute__(self, "__dict__")
+        if name in instance_dict:
+            return instance_dict[name]
+
+        # Not found in wrapper hierarchy or instance, forward to wrapped optimizer
+        optimizer = instance_dict["optimizer"]
+        return getattr(optimizer, name)
+
+    def __setattr__(
+        self,
+        name: str,
+        value: Any,
+    ) -> None:
+        """
+        Forwards attribute assignment to the wrapped optimizer while allowing the
+        wrapper to maintain its own state during and after initialization.
+
+        This ensures attribute assignments behave as if made directly on the wrapped
+        optimizer, maintaining transparency for users. Uses an _initialized flag to
+        distinguish initialization from post-init usage, forwarding new attributes
+        while preserving existing wrapper state.
+        """
+        instance_dict = object.__getattribute__(self, "__dict__")
+        if "_initialized" not in instance_dict:
+            # Still in __init__, set everything locally
+            object.__setattr__(self, name, value)
+        else:
+            # After __init__
+            if name in instance_dict:
+                # Existing instance attribute, update locally
+                object.__setattr__(self, name, value)
+            else:
+                # New attribute, forward to wrapped optimizer
+                optimizer = instance_dict["optimizer"]
+                setattr(optimizer, name, value)
 
     def state_dict(self) -> Dict[str, Any]:
         """Returns a functional statedict"""

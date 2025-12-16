@@ -224,5 +224,81 @@ def test_state_dict_is_serializable():
         pytest.fail("State dict not serializable")
 
 
+# ---------------------------------------------------------------------------
+# Attribute and Method Forwarding Contract Tests
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_method_call_forwarded_to_optimizer():
+    """Calling unknown methods on wrapper forwards to optimizer."""
+    mock_opt, _ = create_mock_optimizer()
+    mock_opt.custom_method = Mock(return_value=42)
+    wrapper = ConcreteWrapper(mock_opt)
+
+    result = wrapper.custom_method("arg1", kwarg="value")
+
+    assert result == 42
+    mock_opt.custom_method.assert_called_once_with("arg1", kwarg="value")
+
+
+def test_unknown_attribute_access_forwarded_to_optimizer():
+    """Accessing unknown attributes on wrapper gets from optimizer."""
+    mock_opt, _ = create_mock_optimizer()
+    mock_opt.learning_rate = 0.001
+    wrapper = ConcreteWrapper(mock_opt)
+
+    assert wrapper.learning_rate == 0.001
+
+
+def test_wrapper_own_methods_not_forwarded():
+    """Wrapper's own methods are called directly, not forwarded."""
+    mock_opt, _ = create_mock_optimizer()
+    mock_opt._take_batch_step = Mock()
+    wrapper = ConcreteWrapper(mock_opt)
+
+    wrapper._take_batch_step()
+
+    # Mock should NOT have been called - wrapper has its own implementation
+    mock_opt._take_batch_step.assert_not_called()
+
+
+def test_wrapper_state_dict_not_forwarded():
+    """Wrapper's state_dict is its own, not forwarded to optimizer."""
+    mock_opt, _ = create_mock_optimizer()
+    mock_opt.state_dict = Mock(return_value={"opt": "state"})
+    wrapper = ConcreteWrapper(mock_opt)
+
+    state = wrapper.state_dict()
+
+    # Wrapper returns its own state dict with wrapper fields
+    assert "num_batches" in state
+    assert "num_steps" in state
+    assert "optimizer" in state
+
+
+def test_attribute_assignment_stored_on_optimizer():
+    """Attributes assigned to wrapper are stored on the optimizer, not wrapper.
+
+    This is the one white-box test allowed to verify the forwarding contract.
+    We test by swapping the underlying optimizer and confirming attributes
+    follow the optimizer, not the wrapper instance.
+    """
+    mock_opt1, _ = create_mock_optimizer()
+    mock_opt2, _ = create_mock_optimizer()
+    wrapper = ConcreteWrapper(mock_opt1)
+
+    # Set attribute through wrapper
+    wrapper.custom_value = 100
+
+    # Swap the optimizer
+    wrapper.optimizer = mock_opt2
+    mock_opt2.custom_value = 200
+
+    # Attribute should follow the optimizer
+    assert wrapper.custom_value == 200
+    # Original optimizer still has old value
+    assert mock_opt1.custom_value == 100
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
