@@ -9,10 +9,12 @@ cleaning too.
 from typing import Any, Callable, Dict, Optional
 
 import torch
-from jinja2.optimizer import Optimizer
 
 from .base import AbstractOptimizerWrapper
-
+from .optim_utils import (optimizer_extend,
+                          optimizer_get_collection,
+                          optimizer_get_raw_grad_norms,
+                          arbitrary_schedule_factory)
 
 class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     """
@@ -25,23 +27,25 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     At that point, the wrapper triggers an optimizer step and resets
     accumulation.
 
-    The threshold is controlled externally through the scheduler system:
-    schedulers may adjust the value stored in the parameter group's `lr`
-    field, which GNTS interprets as the current gradient-norm target
-    rather than a learning rate.
+    The system will setup the "gradient_norm_threshold" field in the underlying optimizer
+    for all parameter group, with 1.0 by default, then check if the gradient norm for
+    each group is above or below the threshold before starting. This means a simple
+    way to adjust the importannce of groups is to ensure "gradient_norm_threshold" is
+    defined in optimizer.param_groups before getting here.
 
-    Users should not call `.zero_grad()` directly when using this wrapper,
-    as gradient clearing is managed internally.
+    Important:
+        - **Make sure to understand a higher threshold is MORE permissive, not less when tweaking per group thresholds**
+        - If you use multiple param groups, the system waits to step until all param
+          groups meet their threshold.
+        - It is HIGHLY recommended to use the constructor utility "make_gnts_optimizer" instead since it returns both
+            the schedule and optimizer needed.
     """
-
-    @property
-    def norm_threshold(self):
-        return self.param_groups[0]["lr"]
 
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
         max_batch_draws: int = 64,
+        group_mode: str = "L2"
     ):
         """
         Initialize the GNTS wrapper.
@@ -55,18 +59,14 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
             The maximum number of consecutive batches GNTS will draw
             before forcing an optimizer step, regardless of the gradient
             norm condition.
+        group
         """
-        super().__init__(optimizer)
 
-        # Schedulers will modify this thinking it is a learning rate,
-        # but we instead interpret it as the gradient norm threshold
-        self.param_groups = [{"lr": 1.0}]
-
-        # Other kinds of initialization, including
-        # the weight decay subsystem
+        # Extend the optimizer to contain a gradient_norm_threshold target, if it does not already exist.
+        # Then initialize max draws, and the underlying base class, finishing initialization.
+        optimizer = optimizer_extend(optimizer, "gradient_norm_threshold", 1.0)
         self.max_draws = max_batch_draws
-
-        # Note: self.parameters is constructed in base class.
+        super().__init__(optimizer)
 
     def step(
         self,
@@ -91,14 +91,26 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         bool
             True if the optimizer stepped, False if still accumulating gradients.
         """
-        optimizer_was_stepped = False
-        grads = [p.grad for p in self.parameters]
-        current_norm = torch.nn.utils.get_total_norm(grads) / self.num_draws
-        if current_norm < self.norm_threshold or self.num_draws >= self.max_draws:
+        optimizer_needs_step = True
+
+        # Get threshold and norms. Remember to account for the
+        # fact we are summing, and need to divide to get the mean
+        thresholds = optimizer_get_collection(self.optimizer, "gradient_norm_threshold")
+        norms = optimizer_get_raw_grad_norms(self.optimizer)
+        norms = [norm/self.max_draws for norm in norms]
+
+        # Check all thresholds are satisfied.
+        for threshold, norm in zip(thresholds, norms):
+            if norm > threshold:
+                optimizer_needs_step = False
+
+        # Handle stepping
+        optimizer_takes_step = False
+        if optimizer_needs_step or self.num_draws >= self.max_draws:
             self._take_optimizer_step(closure)
-            optimizer_was_stepped = True
+            optimizer_takes_step = True
         self._take_batch_step()
-        return optimizer_was_stepped
+        return optimizer_takes_step
 
     def statistics(self) -> Dict[str, Any]:
         """
@@ -128,3 +140,4 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
             f"steps={self.num_steps}, "
             f"core={type(self.optimizer).__name__}>"
         )
+

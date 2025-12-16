@@ -6,8 +6,7 @@ a target gradient norm, either globally or per-parameter independently.
 from typing import Any, Callable, Dict, Literal, Optional
 
 import torch
-
-from base import AbstractOptimizerWrapper
+from ..base import AbstractOptimizerWrapper
 
 
 class OptimizerWrapperGNR(AbstractOptimizerWrapper):

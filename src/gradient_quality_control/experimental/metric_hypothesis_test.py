@@ -6,9 +6,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import torch
+from ..base import AbstractOptimizerWrapper
 from scipy import stats
-
-from base import AbstractOptimizerWrapper
 
 
 class OptimizerWrapperMHT(AbstractOptimizerWrapper):

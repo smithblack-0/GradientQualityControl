@@ -1,22 +1,27 @@
+"""
+Various schedule utils, capable of building an arbitrary
+schedule with particular behavior
+"""
+
 import math
 
 from torch.optim.lr_scheduler import LambdaLR
 
+from .arbitrary_schedules import arbitrary_schedule_factory
 
-## Arbitrary scheduling
 
-
-def get_direct_cosine_annealing_with_warmup(
+def get_cosine_annealing_with_warmup(
     optimizer,
     peak_value: float,
     num_warmup_steps: int,
     num_training_steps: int,
     min_value: float = 0.0,
+    schedule_target: str = "lr",
 ) -> LambdaLR:
     """
     Create a scheduler with linear warmup and cosine annealing.
-    Importantly, this DIRECTLY sets the value of the learning
-    rate rather than multiplying it.
+    Uses a lambda lr system, and can be set to schedule an
+    arbitrary feature
 
     Directly computes and sets values (via 'lr' param group):
     - Warmup: 0 → peak_value (linear)
@@ -28,9 +33,10 @@ def get_direct_cosine_annealing_with_warmup(
         num_warmup_steps: Steps for warmup phase
         num_training_steps: Total training steps
         min_value: Minimum value at end (default: 0.0)
-
+        schedule_target: Target for schedule. By default learning rate, but could
+            viably be set to, for example, "weight_decay".
     Returns:
-        LambdaLR scheduler that directly sets values
+        An arbitrary schedule object that sets the system.
     """
 
     def lr_lambda(step):

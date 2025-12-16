@@ -126,7 +126,8 @@ def test_statistics_has_required_keys():
     assert "batches" in stats
     assert "steps" in stats
     assert "num_draws" in stats
-
+    assert "last_mean_grad_norm" in stats
+    assert "last_step_num_draws" in stats
 
 def test_batch_step_increments_batches():
     mock_opt, _ = create_mock_optimizer()
@@ -145,6 +146,44 @@ def test_optimizer_step_increments_steps():
     after = wrapper._get_base_statistics()["steps"]
     assert after == initial + 1
 
+
+def test_last_mean_grad_norm_in_statistics():
+    """Verify last_mean_grad_norm appears in statistics after optimizer step."""
+    mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(3,))
+    wrapper = ConcreteWrapper(mock_opt)
+
+    # Before any optimizer step, should be None
+    stats_before = wrapper._get_base_statistics()
+    assert stats_before["last_mean_grad_norm"] is None
+
+    # Take an optimizer step with gradients
+    params[0].grad = torch.tensor([3.0, 4.0, 0.0])
+    wrapper._take_optimizer_step()
+
+    # After step, should have a value
+    stats_after = wrapper._get_base_statistics()
+    assert stats_after["last_mean_grad_norm"] is not None
+    assert isinstance(stats_after["last_mean_grad_norm"], (float, torch.Tensor))
+
+
+def test_last_step_num_draws_in_statistics():
+    """Verify last_step_num_draws appears in statistics after optimizer step."""
+    mock_opt, params = create_mock_optimizer(num_params=1, param_shape=(2,))
+    wrapper = ConcreteWrapper(mock_opt)
+
+    # Before any optimizer step, should be None
+    stats_before = wrapper._get_base_statistics()
+    assert stats_before["last_step_num_draws"] is None
+
+    # Add some draws and take optimizer step
+    wrapper._take_batch_step()
+    wrapper._take_batch_step()
+    params[0].grad = torch.tensor([2.0, 2.0])
+    wrapper._take_optimizer_step()
+
+    # After step, should equal the number of draws from that step
+    stats_after = wrapper._get_base_statistics()
+    assert stats_after["last_step_num_draws"] == 3  # 1 initial + 2 added
 
 # ---------------------------------------------------------------------------
 # State Dict Contract Tests

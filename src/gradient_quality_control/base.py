@@ -8,9 +8,9 @@ of statistics.
 
 from typing import Any, Callable, Dict, Optional
 
-import torch
 from torch.optim import Optimizer
 
+from .optim_utils.optimizer_utils import optimizer_multiply_gradients, optimizer_get_grad_norm
 
 class AbstractOptimizerWrapper(Optimizer):
     """
@@ -44,11 +44,6 @@ class AbstractOptimizerWrapper(Optimizer):
         self.last_grad_norm = None
         self.last_step_num_draws = None
 
-        self.parameters = []
-        for group in self.optimizer.param_groups:
-            for p in group["params"]:
-                self.parameters.append(p)
-
         # Finish initialization
         self._initialized = True
 
@@ -66,16 +61,13 @@ class AbstractOptimizerWrapper(Optimizer):
         if self.num_draws == 0:
             raise RuntimeError("Forgot to invoke take batch step after take optimizer step")
 
-        # Convert gradients to mean form
-        grads = []
-        for param in self.parameters:
-            if param.grad is None:
-                continue
-            param.grad.data /= self.num_draws
-            grads.append(param.grad)
+        # Handle grad norm conversion
+        # and operations
+        optimizer_multiply_gradients(self.optimizer, 1/self.num_draws)
+        last_grad_norm = optimizer_get_grad_norm(self.optimizer)
 
         # Take step.
-        self.last_grad_norm = torch.nn.utils.get_total_norm(grads).item()
+        self.last_grad_norm = last_grad_norm
         self.last_optimizer_result = self.optimizer.step(closure)
         self.optimizer.zero_grad()
         self.last_step_num_draws = self.num_draws
@@ -175,3 +167,4 @@ class AbstractOptimizerWrapper(Optimizer):
         self.last_grad_norm = state_dict["last_mean_grad_norm"]
         self.last_step_num_draws = state_dict["last_step_num_draws"]
         self.optimizer.load_state_dict(state_dict["optimizer"])
+
