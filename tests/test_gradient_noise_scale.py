@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 import torch
 import torch.nn as nn
-from experimental.gradient_noise_scale import OptimizerWrapperGNS
+from gradient_noise_scale import OptimizerWrapperGNS
 
 
 def create_mock_optimizer(num_params=3, param_shape=(10,)):

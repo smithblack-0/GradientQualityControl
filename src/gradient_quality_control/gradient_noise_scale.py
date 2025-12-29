@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import torch
-from ..base import AbstractOptimizerWrapper
+from base import AbstractOptimizerWrapper
 from torch import nn
 
 

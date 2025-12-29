@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 import torch
 import torch.nn as nn
-from experimental.gradient_norm_rescalar import OptimizerWrapperGNR
+from gradient_norm_rescalar import OptimizerWrapperGNR
 
 
 def create_mock_optimizer(num_params=3, param_shape=(10,)):

@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 import torch
 import torch.nn as nn
-from experimental.metric_hypothesis_test import OptimizerWrapperMHT
+from metric_hypothesis_test import OptimizerWrapperMHT
 
 
 def create_mock_optimizer(num_params=3, param_shape=(10,)):
