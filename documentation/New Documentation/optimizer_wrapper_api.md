@@ -21,18 +21,9 @@ The base class for all GQC optimizer wrappers implementing the Sequential Binary
 
 Implementing a Sequential Binary Decision Controller for gradient accumulation requires solving several tedious problems. The gradients must be accumulated correctly across batches and averaged before stepping. The wrapper must track how many batches have been processed, how many optimizer steps have been taken, and how many batches are currently accumulated. This state must serialize and restore correctly for checkpointing. The wrapper must behave transparently like a normal optimizer so existing code continues to work. Statistics about the control algorithm's behavior must be collected and reported. These problems are identical across all control algorithms - only the decision logic varies.
 
-Despite this, ultimately, the differences between algorithms are subtle. All algorithms ultimately make one decision:
+The base class solves these problems once. It manages gradient accumulation by dividing accumulated gradients by the number of batches when stepping the optimizer, converting PyTorch's natural summation into the required mean. It tracks counters through `_received_batch()` and `_take_optimizer_step()`, maintaining invariants like ensuring at least one batch is drawn before any step and preventing accumulation beyond `max_draws`. It provides serialization through `state_dict()` and `load_state_dict()`, automatically saving and restoring all wrapper state alongside the wrapped optimizer's state. Subclasses store their algorithm parameters through `set_state()`, which writes to an internal dictionary that serializes automatically - direct field assignment after initialization throws an error to prevent serialization bugs. The base class handles statistics reporting through `statistics()` and `vital_statistics()`, pulling from both wrapper state and optimizer parameters and aggregating across parameter groups when values differ. It implements transparent optimizer interface forwarding by subclassing `torch.optim.Optimizer` and delegating all non-overridden methods and attributes to the wrapped optimizer.
 
-1) Do we step the optimizer then zero the grads?
-2) Do we fiddle with the gradients at all before taking that step?
-
-This leaves us with a strong candidate for abstraction. It is this niche the base class exists to solve. I
-
-* **Manages Gradient Accumulation** by dividing accumulated gradients by the number of batches when stepping the optimizer, converting PyTorch's natural summation into the required mean.
-* **Tracks Statistics**  through `_received_batch()` and `_take_optimizer_step()`, maintaining invariants like ensuring at least one batch is drawn before any step and preventing accumulation beyond `max_draws`.
-* **Accelerates Serialization** through `state_dict()` and `load_state_dict()`, automatically saving and restoring all wrapper state alongside the wrapped optimizer's state. Subclasses store their algorithm parameters through `set_state()`, which writes to an internal dictionary that serializes automatically - direct field assignment after initialization throws an error to prevent serialization bugs.
-* **Handles Statistical Reporting**  through `statistics()` and `vital_statistics()`, pulling from both wrapper state and optimizer parameters and aggregating across parameter groups when values differ.
-* **Integrates Cleanly** y subclassing `torch.optim.Optimizer` and delegating all non-overridden methods and attributes to the wrapped optimizer. `.step()` then may or may not step the wrapped optimizer, and 
+The base class does not implement the control algorithm. Subclasses implement `step()` to decide when conditions warrant calling `_take_optimizer_step()`. The base class provides infrastructure; subclasses provide control logic. 
 
 ### Public Instance Behavior
 
@@ -70,16 +61,6 @@ Attempts to initialize and set fields on the class directly will throw, and in f
 
 
 ---
-
-
-The wrapper transparently forwards all optimizer methods and attributes you don't override. When users call `wrapper.param_groups` or `wrapper.add_param_group()`, it works automatically - you don't write delegation code. The wrapper satisfies `isinstance(wrapper, Optimizer)` and works with ScheduleAnything and other PyTorch tooling without extra effort.
-
-Finally, it tracks statistics for you. Counters like `num_batches`, `num_steps`, and `num_draws` update automatically when you call `_received_batch()` and `_take_optimizer_step()`. The gradient norm from the last step is computed and cached. The `statistics()` and `vital_statistics()` methods pull from your state automatically - you mark what's vital via the `flag` parameter in `set_state()`, and the base class handles filtering and aggregation across parameter groups.
-
-Without the base class, every algorithm would reimplement this infrastructure. With it, you write your control logic and call three methods: `_received_batch()`, `_take_optimizer_step()`, and `set_state()`. The rest just works.
-
----
-
 
 ## Underlying Details
 
