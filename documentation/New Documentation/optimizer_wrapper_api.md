@@ -58,7 +58,7 @@ When this condition occurs, the step decision is taken. This ensures the effecti
 ### Step
 
 ```python
-def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
+def step(self) -> bool
 ```
 
 **Returns:** True if optimizer stepped, False if still accumulating
@@ -111,7 +111,7 @@ When this condition is satisfied for all parameter groups, the step decision is 
 ### Step
 
 ```python
-def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
+def step(self) -> bool
 ```
 
 **Returns:** True if optimizer stepped, False if still accumulating
