@@ -250,7 +250,7 @@ torch.save(checkpoint, 'checkpoint.pt')
 # Later, resume:
 checkpoint = torch.load('checkpoint.pt')
 model.load_state_dict(checkpoint['model'])
-optimizer.load_state_dict(checkpoint['wrapper'])
+optimizer.load_state_dict(checkpoint['optimizer'])
 ```
 
 ### load_state_dict
