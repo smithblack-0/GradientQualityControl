@@ -1,12 +1,12 @@
 # Gradient Quality Control
 
-**Gradient Quality Control (GQC)** is a research/infrastructure library designed to examine a wide variety of 'gradient preprocessers' and deliver the current best production solutions that significantly improve training quality of a large variety of small and medium sized models.
+**Gradient Quality Control (GQC)** is a research/infrastructure library designed to examine a wide variety of 'gradient preprocessers' which improve performance before an optimizer ever gets the chance to step.
 
-It provides a well-defined abstract class to do research through, drop-in optimizer wrappers built on top of the robust ScheduleAnything package, and a variety of gradient cleaners to experiment with, some of which are quite powerful. It also has a flagship implementation that is kept up to date for intermediate rather than advanced users.
+It provides  drop-in optimizer wrappers built on top of the robust ScheduleAnything package, a well-defined abstract class to do research through, and a variety of wrapper factories to experiment with, some of which are quite powerful. It also has a flagship implementation that is kept up to date for intermediate rather than advanced users.
 
 ## Why Gradient Quality Control?
 
-An enormous amount of effort has gone into examining optimizer theory in machine learning, with options like Adam, AdamW, AdaGrad, etc. Surprisingly little research, however, has gone into deciding when to take an optimizer step in the first place or how many samples to draw, with AdaBatch being one notable example. Even less research has observed you can control the logical batch size in constant memory by using gradient accumulation and defining when to step as a control decision. And nothing, as far as we can tell, has observed that how big the batch is can be composed orthogonally to standard optimizer theory using gradient accumulation and a .step()/continue_to_accumulate sequential binary control decision.
+An enormous amount of effort has gone into examining optimizer theory in machine learning, with options like Adam, AdamW, AdaGrad, etc. Surprisingly little research, however, has gone into deciding when to take an optimizer step in the first place, with AdaBatch being one notable example. Even less research has used gradient accumulation to dynamically control batch size. And nothing, as far as we can tell, has observed that how big the batch is can be composed orthogonally to standard optimizer theory using gradient accumulation and a .step()/continue_to_accumulate sequential binary control decision.
 
 This library fits in that missing niche. We define an abstract optimizer wrapper class for gradient accumulation fitting formally in the Sequential Binary Decision Controller control theory niche; concrete cases then implement the control algorithm. Decision constants like thresholds or targets are defined as schedulable parameters using ScheduleAnything. Some algorithms have shown incredible promise at this point, and the library is moving towards production-ready usage with some flagship algorithms.
 
@@ -37,7 +37,7 @@ Then the flagship algorithm shown in the Getting Started guide is likely an exce
 * Intending to use FSDP.
 * Going to use non-replicated distributed functionality.
 
-Then you are currently unsupported and would have to implement your own algorithm. Practioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Base Object API](base_object_api.md) as well.
+Then you are currently unsupported and would have to implement your own algorithm. Practitioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Base Object API](base_object_api.md) as well.
 
 ### Researchers
 
@@ -45,7 +45,7 @@ If you are a researcher interested in this line of reseearch, it is recommended 
 
 ## Getting Started 
 
-This algorithm is continously maintained as the example of the most productive implementation yet discovered. It has last been updated on 12/28/2025
+This algorithm is continuously maintained as the example of the most productive implementation yet discovered. It has last been updated on 12/28/2025
 
 Getting started with GQC is straightforward. 
 
@@ -74,7 +74,7 @@ for inputs, labels in train_loader:
     scheduler.step()
 ```
 
-In the Gradient Norm Theshold Scheduling algorithm, instead, we would directly control the step size and signal-to-noise ratio by demanding the gradient norm be a certain magnitude before stepping. This involves several manipulations under the hood and is implemented as a function returning an optimizer wrapper and a schedule. For this reason, this is composable with basically any existing optimizer. The defaults have been tuned on AdamW and GPT2.
+The Gradient Norm Theshold Scheduling algorithm instead attempts to directly tune the ideal batch size using gradient accumulation. This involves several manipulations under the hood and is implemented as a function returning an optimizer wrapper and a schedule. The optimizer and schedules themselves implement all standard fields, and the optimizer passes through methods to the wrapped object. For this reason, this is composable with any existing optimizer and with the majority of frameworks.
 
 ```python
 from gradient_quality_control import OptimizerWrapperGNTS, make_gnts_with_cosine_annealing_schedule
@@ -98,7 +98,7 @@ for inputs, labels in train_loader:
     schedule.step()
 ```
 
-The primary control available is to set the norm schedule, specifically what it ends up warming up into and annealing down to. This literally specifies to the system how low the gradient norms have to become before the system can take an optimizer step. It should be kept in mind **lower numbers are more restrictive**. If the system never steps during warmup, you can also set initial_warmup_multiplier to a higher value.
+Under the hood, this is implementing a ScheduleAnything schedule that sets the "gradient_norm_threshold" to follow a curve, from 0.95 to 0.25 by default. The system then accumulated gradients until the gradient norm is *below* this threshold. It should be kept in mind **lower numbers are more restrictive**. and the exact values can be edited. Please also keep in mind that due to lower numbers being more restrictive this uses an **inverse warmup** when controlling the norm threshold, though it uses a normal warmup for weight decay and loss. Setting these values explicitly, observe the following:
 
 ```python
 from gradient_quality_control import OptimizerWrapperGNTS, get_gnts_optimizer_and_cosine_schedule
