@@ -57,10 +57,7 @@ However, in the process of doing this, there are some rules that are needed to a
 * Invoke `_take_optimizer_step` any time it is decided an optimizer step is needed.
 * Initialize, store and update state through the "set_state" and "get_state" method. 
 
-Attempts to initialize and set fields on the class directly will throw, and in fact must go through set_state instead. set_state lets you set a statistic as 'vital', and one should do so with important fields like, for example, num_last_batch_draws or last_mean_gradient_norm. get_state can get optimizer state as well, and when doing so will return a list rather than a single entry from the optimizer parameter groups; a special flag can ask for the mean, max, or min instead. 
-
-
----
+Attempts to initialize and set fields on the class directly will throw, and in fact must go through set_state instead. set_state lets you set a statistic as 'vital', and one should do so with important fields like, for example, num_last_batch_draws or last_mean_gradient_norm. get_state can get optimizer state as well, and when doing so will return a list rather than a single entry from the optimizer parameter groups; a special flag can ask for the mean, max, or min instead.
 
 ## Underlying Details
 
@@ -76,8 +73,6 @@ PyTorch's `.backward()` sums gradients into `.grad` by default. After N consecut
 
 **State Storage:**
 All wrapper state lives in `wrapper_states`: `{name: {"value": X, "flag": "vital"/"optional"}}`. Access only through `set_state()` and `get_state()`. Direct field assignment after initialization throws to prevent serialization bugs - if it's not in `wrapper_states`, it won't survive `state_dict()`/`load_state_dict()`.
-
----
 
 ## Method Specifications
 
@@ -518,9 +513,7 @@ def step(self, closure=None):
     return False
 ```
 
----
-
-### Invariants
+## Invariants
 
 Properties that **must always hold:**
 
@@ -536,9 +529,7 @@ Properties that **must always hold:**
 10. **Immutable flags** - Vital/optional status cannot change once set
 11. **Anytime statistics** - `statistics()` and `vital_statistics()` work before first step
 
----
-
-### Subclass Implementation Contract
+## Subclass Implementation Contract
 
 **Subclasses must:**
 
