@@ -87,12 +87,16 @@ All wrapper state lives in `wrapper_states`: `{name: {"value": X, "flag": "vital
 def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int)
 ```
 
-The constructor wraps an existing PyTorch optimizer to add gradient accumulation control. Instead of creating an optimizer directly, you create your optimizer as normal (Adam, SGD, etc.) and then wrap it. The wrapper intercepts calls to `step()` to implement your control algorithm while maintaining full compatibility with the underlying optimizer's behavior. You pass an already-configured optimizer with learning rate, weight decay, and other hyperparameters set.
+**Subclasses must call via `super().__init__(optimizer, max_draws)` before their own initialization.**
 
-The `max_draws` parameter provides a safety bound on accumulation - if your control algorithm hasn't stepped by the time this many batches accumulate, the wrapper forces a step. This prevents unbounded memory growth from gradient accumulation and ensures training progress even if the control algorithm's conditions are never met. Set this based on your memory constraints and minimum acceptable step frequency.
+The parent constructor sets up the base wrapper infrastructure. When your subclass calls `super().__init__()`, it wraps the provided optimizer, initializes the counter system (num_batches, num_steps, num_draws all to 0), and stores the max_draws safety bound. After this call returns, your subclass can use `set_state()` to initialize algorithm-specific parameters, knowing the base wrapper infrastructure is ready.
+
+The optimizer parameter should be a fully-configured PyTorch optimizer (Adam, SGD, etc.) with learning rate, weight decay, and other hyperparameters already set. The wrapper doesn't modify optimizer configuration - it just wraps it for gradient accumulation control.
+
+The max_draws parameter enforces a safety bound on accumulation. If your control algorithm hasn't stepped by the time this many batches accumulate, the base class forces a step. This prevents unbounded memory growth and ensures training progress even if your algorithm's conditions are never met. Choose this based on memory constraints and minimum acceptable step frequency for your algorithm.
 
 **Parameters:**
-- `optimizer` (torch.optim.Optimizer) - Configured PyTorch optimizer to wrap. The wrapper delegates all optimizer behavior to this instance.
+- `optimizer` (torch.optim.Optimizer) - Configured PyTorch optimizer to wrap
 - `max_draws` (int) - Maximum batches that can accumulate before forcing a step. Must be ≥ 1.
 
 **Initializes:**
@@ -100,10 +104,15 @@ The `max_draws` parameter provides a safety bound on accumulation - if your cont
 - Initializes counters: `num_batches=0`, `num_steps=0`, `num_draws=0`
 - Stores `max_draws` as safety bound
 
-**Usage Example:**
+**Subclass Implementation Pattern:**
 ```python
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-wrapper = OptimizerWrapperGNTS(optimizer, max_draws=32)  # Subclass implementation
+class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
+    def __init__(self, optimizer, max_draws, threshold):
+        super().__init__(optimizer, max_draws)  # Call parent first
+
+        # Now initialize subclass-specific state
+        self.set_state("gradient_norm_threshold", threshold, "vital")
+        self.set_state("last_grad_norm", None, "optional")
 ```
 
 ---
