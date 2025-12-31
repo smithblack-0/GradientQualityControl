@@ -4,6 +4,14 @@
 
 It provides  drop-in optimizer wrappers built on top of the robust ScheduleAnything package, a well-defined abstract class to do research through, and a variety of wrapper factories to experiment with, some of which are quite powerful. It also has a flagship implementation that is kept up to date for intermediate rather than advanced users.
 
+## Documentation
+
+- **[User Guide](user_guide.md)** - Comprehensive overview of library architecture and usage patterns
+- **[Wrapper Factories API Guide](api_guide.md)** - Pre-configured factory functions for common use cases
+- **[Optimizer Wrapper API](optimizer_wrapper_api.md)** - Detailed specifications for individual wrapper algorithms
+- **[Base Object API](base_object_api.md)** - Abstract base class for extending with custom algorithms
+- **[Research Guide](research_guide.md)** - Commentary on the research line and design decisions
+
 ## Why Gradient Quality Control?
 
 An enormous amount of effort has gone into examining optimizer theory in machine learning, with options like Adam, AdamW, AdaGrad, etc. Surprisingly little research, however, has gone into deciding when to take an optimizer step in the first place, with AdaBatch being one notable example. Even less research has used gradient accumulation to dynamically control batch size. And nothing, as far as we can tell, has observed that how big the batch is can be composed orthogonally to standard optimizer theory using gradient accumulation and a .step()/continue_to_accumulate sequential binary control decision.
