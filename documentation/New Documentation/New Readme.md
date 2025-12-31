@@ -37,11 +37,11 @@ Then the flagship algorithm shown in the Getting Started guide is likely an exce
 * Intending to use FSDP.
 * Going to use non-replicated distributed functionality.
 
-Then you are currently unsupported and would have to implement your own algorithm. Practioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Optimizer Wrapper Guide](optimizer_wrapper_guide.md) as well.
+Then you are currently unsupported and would have to implement your own algorithm. Practioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Base Object API](base_object_api.md) as well.
 
 ### Researchers
 
-If you are a researcher interested in this line of reseearch, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Optimizer Wrapper API](optimizer_wrapper_apid.md) for underlying details of the algorithms.
+If you are a researcher interested in this line of reseearch, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Base Object API](base_object_api.md) for underlying details of the algorithms.
 
 ## Getting Started 
 

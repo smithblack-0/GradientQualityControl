@@ -14,7 +14,7 @@ This library is a **research tool** for people who understand optimization and n
 
 ## Usage Overview
 
-The primary interface of the library is the optimizer wrapper. Specifically, the `AbstractOptimizerWrapper` class defined in the base.py file. This is an abstract optimizer designed to be injected with a real optimizer and which then makes decisions on when to invoke the `.step()` and `.zero_grad()` functionality, taking this over from the user. Under the hood, this may implement gradient changes and operations such as rescaling the gradients, but it is most often implemented using functionality to perform gradient accumulation until finally taking a step, at which point the optimizer steps in the direction of the average gradient.
+The primary interface of the library is the optimizer wrapper. Specifically, the `AbstractOptimizerWrapper` class defined in the base.py file (see [Base Object API](base_object_api.md) for full specification). This is an abstract optimizer designed to be injected with a real optimizer and which then makes decisions on when to invoke the `.step()` and `.zero_grad()` functionality, taking this over from the user. Under the hood, this may implement gradient changes and operations such as rescaling the gradients, but it is most often implemented using functionality to perform gradient accumulation until finally taking a step, at which point the optimizer steps in the direction of the average gradient.
 
 Each concrete implementation of the `AbstractOptimizerInterface`. such as `OptimizerWrapperGNTS`, are paired with one or more factory methods called `make_#variety_#details' which returns a wrapped optimizer and a bound schedule configuration believed to be useful. These are then used like normal as part of a training schedule:
 
@@ -55,7 +55,7 @@ Optimizer wrappers which are or were intended to increase performance rather tha
 * **Gradient Norm Threshold Scheduling**: The current best algorithm. This works by associating the length of the gradients to be a proxy to gradient quality, and demanding the gradients be under a certain length before taking a step, allowing cancellation. The features "lr", "weight_decay", and "gradient_norm_threshold" are primary schedule targets. Normal operation is to warmup learning rate to a constant, warmup weight decay then cosine anneal, and inverse warmup then cosine anneal the gradient norm threshold. Like the Gradient Norm Rescaler this directly controls the length of the gradients, eliminating the need for a learning rate schedule.
 
 
-For more details on the actual objects, consult [Optimizer Wrapper API](optimizer_wrapper_apid.md), or for details on why these are the right way to think about the abstractions consult [Research Guide](research_guide.md).
+For more details on the actual objects, consult [Base Object API](base_object_api.md), or for details on why these are the right way to think about the abstractions consult [Research Guide](research_guide.md).
 
 ## Wrapper Factories
 
