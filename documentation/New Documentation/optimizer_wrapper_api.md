@@ -308,7 +308,7 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 The primary issues is whether or not samples are independent. 
 
-- **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list.
+- **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list on all devices. 
 - **`sharded`**: This is still just one batch. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 
 
 ### Algorithm
