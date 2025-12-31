@@ -168,3 +168,56 @@ def step(self) -> bool
 ```
 
 **Returns:** True (always steps)
+
+---
+
+## OptimizerWrapperMHT
+
+**Metric Hypothesis Test**
+
+Statistical wrapper for variance-based accumulation control. Accumulates metric samples (typically loss) across batches and uses a two-tailed t-test to determine when the confidence interval is sufficiently narrow, ensuring low-variance parameter updates.
+
+### Constructor
+
+The constructor wraps an optimizer, and asks for exactly as much additional information as is needed for the algorithm to run. Specifically, it asks for
+
+```python
+def __init__(
+    self,
+    optimizer: torch.optim.Optimizer,
+    max_batch_draws: int = 64
+)
+```
+
+where
+
+**Parameters:**
+- `optimizer` - Configured PyTorch optimizer to wrap
+- `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+
+### Schedule Targets
+
+The following primary ScheduleAnything targets are added
+
+- **`confidence_level`** - Statistical confidence level for t-test (e.g., 0.95 for 95% confidence) injected by wrapper
+- **`percent_error_threshold`** - Maximum acceptable confidence interval width injected by wrapper
+
+In addition the following two are almost always present on Adam optimizer derivatives
+
+- **`lr`** - Learning rate from wrapped optimizer
+- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Algorithm
+
+On each step call, the user provides a metric value (typically loss). The system accumulates these metric samples and performs a two-tailed t-test to compute the confidence interval at the specified `confidence_level`. The step decision is taken when the confidence interval meets the `percent_error_threshold` criterion, indicating the metric estimate has sufficiently low variance. The system will force a step when `num_draws >= max_batch_draws` regardless of confidence interval width.
+
+### Step
+
+```python
+def step(self, metric: float) -> bool
+```
+
+**Parameters:**
+- `metric` - Metric value for this batch (typically loss)
+
+**Returns:** True if optimizer stepped, False if still accumulating
