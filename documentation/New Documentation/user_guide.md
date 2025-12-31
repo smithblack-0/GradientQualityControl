@@ -48,7 +48,7 @@ for batch in loader:
 
 ## The Sequential Binary Control Decision
 
-The optimizer wrappers implement a process that formally lies within control theory called a 'Sequential Binary Decision Controller (SBDC)`. The wrappers, in reality, have remarkably little control over the training process. They, for the most part, make a single binary decision:
+The optimizer wrappers implement a process that formally lies within control theory called a 'Sequential Binary Decision Controller (SBDC)`. The wrappers make a single binary decision:
 
 1) Invoke the wrapped .step() based on the observed metrics, get a mean gradient, step, and zero grads
 2) Wait and accumulate more gradients.
@@ -97,7 +97,7 @@ Using the wrappers directly requires attaching generalized schedules, usually th
 
 The set of wrapper factories exist to make it a bit easier to bind up the optimizer wrappers to the need schedules or schedule possibilities in a convenient to use package. Some of these are production-ready algorithms as well. The set of wrapper factories are
 
-* make_sbc_with_polynomial_schedule: Allows following a polynomial curve from initial batch size to final batch size with an included warmup; usable to schedule the batch size directly instead. Learning rate is to constant, batch size is by polynomial schedule, and weight decay is by cosine annealing to account for removed learninig rate schedule.
+* make_sbc_with_polynomial_schedule: 
 * make_gns_with_cosine_annealing_schedule: Allows the scheduling of the gradient noise scale response quality with cosine annealing and thus adjusted the batch size. Learning rate is by cosine annealing, and the noise scale also follows such a schedule
 * make_gns_default: The default schedule. This inverse warms up the noise tolerance then it just sticks there; learning rate follows a cosine schedule. 
 * make_gnr_with_cosine_annealing_schedule_and_lr_to_constant: The gradient norm rescaler class just rescales the gradient norms to be a certain size then immediately steps. This implements a schedule that is bound to that. Learning rate warms up to constant.
