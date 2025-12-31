@@ -1,8 +1,4 @@
-# Optimizer Wrapper API Reference
-
-Complete API specification for all optimizer wrappers in Gradient Quality Control.
-
-This document defines the exact interface contracts that all code must conform to. Think of this as a contract that could be handed to an implementation fairy with pixie dust - if she follows this spec exactly, it will work correctly.
+# Optimizer Wrapper Base clase
 
 ## Navigation
 
@@ -33,7 +29,7 @@ Optimizer wrappers integrate seamlessly with ScheduleAnything to enable dynamic 
 
 When a subclass calls `set_state(name, value, "optimizer")`, the base class uses ScheduleAnything to extend the wrapped optimizer's param_groups with that new parameter. The parameter gets injected into every parameter group alongside native optimizer parameters like lr. After extension, ScheduleAnything schedules can bind to and modify this parameter just like they would lr or weight_decay.
 
-For example, OptimizerWrapperGNTS needs to schedule `gradient_norm_threshold`. During `__init__`, it calls `set_state("gradient_norm_threshold", 0.95, "optimizer")`. This extends the AdamW optimizer to include gradient_norm_threshold in its param_groups. A ScheduleAnything schedule can then bind to both lr and gradient_norm_threshold, warming up lr while annealing the threshold.
+For example, OptimizerWrapperGNTS needs to schedule `gradient_norm_threshold`. During `__init__`, it calls `set_state("gradient_norm_threshold", 1.0, "optimizer")`. This extends the AdamW optimizer to include gradient_norm_threshold in its param_groups. A ScheduleAnything schedule can then bind to both lr and gradient_norm_threshold, warming up lr while annealing the threshold. 
 
 The wrapper exposes `.valid_schedule_targets` to list all schedulable parameters. This includes the optimizer's native parameters (discovered by inspecting the first param_group) plus any wrapper-specific parameters added via the "optimizer" flag. Factory functions use this to verify schedule bindings are valid.
 
@@ -57,7 +53,7 @@ The following fields are available, with indicated behavior, on the main class
 - **`wrapper_states`** (`Dict`) - Internal state storage. **Direct access is undefined behavior.** Use `get_state()` and `set_state()` instead.
 
 **Public Properties**:
-- **`valid_schedule_targets`** (`List[str]`) - Read-only list of all schedulable parameter names. Includes native optimizer parameters (lr, weight_decay, momentum, etc.) and wrapper-specific parameters added via `set_state(name, value, "optimizer")`. Use this to discover what parameters can be bound to ScheduleAnything schedules.
+- **`valid_schedule_targets`** (`List[str]`) - Read-only list of all schedulable parameter names. Includes native optimizer parameters (lr, weight_decay, momentum, etc.).
 
 **Public Methods**
 - **`step`**: Transparently duck-types exactly as before. 
