@@ -25,6 +25,27 @@ The base class solves these problems once. It manages gradient accumulation by d
 
 The base class does not implement the control algorithm. Subclasses implement `step()` to decide when conditions warrant calling `_take_optimizer_step()`. The base class provides infrastructure; subclasses provide control logic. Overall, the user experience should be that there is a fairly normal optimizer that just calls .zero_grad itself.
 
+### ScheduleAnything Integration
+
+Optimizer wrappers integrate seamlessly with ScheduleAnything to enable dynamic scheduling of both optimizer parameters (lr, weight_decay) and wrapper-specific control parameters (gradient_norm_threshold, logical_batch_size, etc.). This integration happens through parameter extension and unified access.
+
+**How it works:**
+
+When a subclass calls `set_state(name, value, "optimizer")`, the base class uses ScheduleAnything to extend the wrapped optimizer's param_groups with that new parameter. The parameter gets injected into every parameter group alongside native optimizer parameters like lr. After extension, ScheduleAnything schedules can bind to and modify this parameter just like they would lr or weight_decay.
+
+For example, OptimizerWrapperGNTS needs to schedule `gradient_norm_threshold`. During `__init__`, it calls `set_state("gradient_norm_threshold", 0.95, "optimizer")`. This extends the AdamW optimizer to include gradient_norm_threshold in its param_groups. A ScheduleAnything schedule can then bind to both lr and gradient_norm_threshold, warming up lr while annealing the threshold.
+
+The wrapper exposes `.valid_schedule_targets` to list all schedulable parameters. This includes the optimizer's native parameters (discovered by inspecting the first param_group) plus any wrapper-specific parameters added via the "optimizer" flag. Factory functions use this to verify schedule bindings are valid.
+
+**Key mechanisms:**
+
+- **Parameter extension:** `set_state(name, value, "optimizer")` → ScheduleAnything injects parameter into all param_groups
+- **Discovery:** `.valid_schedule_targets` → lists all schedulable parameters (native + extended)
+- **Unified access:** `get_state(name)` → retrieves from wrapper_states or optimizer param_groups transparently
+- **Standard patterns:** Factory functions (make_gnts_with_cosine_annealing_schedule) create wrapper and schedule together, binding to multiple parameters
+
+This design means control algorithms can expose their parameters for scheduling without requiring special schedule implementations. Schedules work with wrapper parameters identically to optimizer parameters.
+
 ### Public Instance Behavior
 
 Instances of this object pretend to be, almost completely, an optimizer instance. This means the object is implemented as on optimizer subclass, and downstream code can invoke the .step field as normal, at which point the underlying subclasses's step algorithm is used to judge whether or not to take a step.  
@@ -32,8 +53,11 @@ Instances of this object pretend to be, almost completely, an optimizer instance
 The following fields are available, with indicated behavior, on the main class
 
 **Public Fields**:
- **`optimizer`** (`torch.optim.Optimizer`) - The wrapped optimizer, directly accessible
+- **`optimizer`** (`torch.optim.Optimizer`) - The wrapped optimizer, directly accessible
 - **`wrapper_states`** (`Dict`) - Internal state storage. **Direct access is undefined behavior.** Use `get_state()` and `set_state()` instead.
+
+**Public Properties**:
+- **`valid_schedule_targets`** (`List[str]`) - Read-only list of all schedulable parameter names. Includes native optimizer parameters (lr, weight_decay, momentum, etc.) and wrapper-specific parameters added via `set_state(name, value, "optimizer")`. Use this to discover what parameters can be bound to ScheduleAnything schedules.
 
 **Public Methods**
 - **`step`**: Transparently duck-types exactly as before. 
@@ -315,28 +339,52 @@ for batch in loader:
 ### set_state (For Subclasses)
 
 ```python
-def set_state(self, name: str, value: Any, flag: Literal["vital", "optional"]) -> None
+def set_state(self, name: str, value: Any, flag: Literal["vital", "optional", "optimizer"]) -> None
 ```
 
-**For subclass implementation - stores wrapper state.**
+**For subclass implementation - stores wrapper state and exposes scheduler targets.**
 
-The set_state method is how subclasses store algorithm parameters, cached metrics, and any other state. Call this in your `__init__` to initialize state, and in your `step()` implementation to update state as training progresses. This is the only way to store state in subclasses - direct field assignment (e.g., `self.threshold = 0.5`) is prohibited after initialization and will throw an error.
+The set_state method serves two purposes: storing wrapper state and exposing parameters to ScheduleAnything for dynamic scheduling. Call this in your `__init__` to initialize state and register schedulable parameters, and in your `step()` implementation to update state as training progresses. This is the only way to store state in subclasses - direct field assignment (e.g., `self.threshold = 0.5`) is prohibited after initialization and will throw an error.
 
 Why the restriction? Serialization guarantee. All state stored through `set_state()` goes into `wrapper_states`, which `state_dict()` automatically serializes. If you set fields directly, they won't be in `wrapper_states` and won't survive checkpointing. The wrapper enforces this at runtime to prevent silent serialization bugs that only show up when you try to resume training. Since this is for subclassing, which happens infrequently, it is deemed acceptable.
 
-The `flag` parameter controls whether this state appears in `vital_statistics()` (for tqdm/logging) or only in `statistics()` (for comprehensive dumps). Mark counters and key metrics as vital; mark internal caches and intermediate values as optional. Once set, the flag is immutable - attempting to change it throws an error to prevent inconsistencies.
+The `flag` parameter controls three distinct behaviors:
+
+- **`"vital"`**: Stores in wrapper_states, appears in `vital_statistics()`, serializes
+- **`"optional"`**: Stores in wrapper_states, only in `statistics()`, serializes
+- **`"optimizer"`**: Uses ScheduleAnything to extend the wrapped optimizer with this schedulable parameter. The parameter becomes accessible to schedules just like native optimizer parameters (lr, weight_decay). Does NOT store in wrapper_states - the optimizer owns it.
+
+The "optimizer" flag enables wrapper-specific scheduling. For example, OptimizerWrapperGNTS needs to schedule `gradient_norm_threshold` alongside learning rate. By calling `set_state("gradient_norm_threshold", 0.95, "optimizer")`, the threshold becomes a schedulable parameter in the optimizer's param_groups, accessible to ScheduleAnything schedules. Schedules can then bind to it just like they bind to lr.
+
+Once set, the flag is immutable - attempting to change it throws an error to prevent inconsistencies.
 
 **Parameters:**
-- `name` (str) - State variable name. Cannot collide with optimizer param_group keys (lr, weight_decay, etc.)
-- `value` (Any) - Value to store. Must be serializable (primitives, lists, dicts, tensors, etc.)
-- `flag` (Literal["vital", "optional"]) - Controls visibility in `vital_statistics()`. Required, no default.
+- `name` (str) - State variable name. For "vital"/"optional": cannot collide with optimizer param_group keys. For "optimizer": becomes a param_group key.
+- `value` (Any) - Value to store. Must be serializable for "vital"/"optional". Must be numeric for "optimizer".
+- `flag` (Literal["vital", "optional", "optimizer"]) - Storage and scheduling behavior. Required, no default.
 
 **Contract:**
-- Stores in `wrapper_states` dictionary
+- `flag="vital"/"optional"`: Stores in `wrapper_states` dictionary, serializes
+- `flag="optimizer"`: Extends optimizer via ScheduleAnything, adds to `.valid_schedule_targets`
 - Creates new entry on first call for this name
 - Updates value on subsequent calls (flag must match original)
-- Throws if name collides with `optimizer.param_groups` keys
+- Throws if flag="vital"/"optional" name collides with optimizer param_group keys
 - Throws if flag differs from original flag for this name
+
+**Usage Pattern:**
+```python
+class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
+    def __init__(self, optimizer, max_draws, threshold):
+        super().__init__(optimizer, max_draws)
+
+        # Wrapper state - internal tracking
+        self.set_state("last_grad_norm", None, "optional")
+        self.set_state("num_last_batch_draws", 0, "vital")
+
+        # Schedulable parameter - exposed to ScheduleAnything
+        self.set_state("gradient_norm_threshold", threshold, "optimizer")
+        # Now schedules can bind to "gradient_norm_threshold" like "lr"
+```
 
 ### get_state (Unified Access)
 
