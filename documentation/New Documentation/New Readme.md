@@ -41,7 +41,7 @@ Then you are currently unsupported and would have to implement your own algorith
 
 ### Researchers
 
-If you are a researcher interested in this line of reseearch, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Base Object API](base_object_api.md) for underlying details of the algorithms.
+If you are a researcher interested in this line of reseearch, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Optimizer Wrapper API](optimizer_wrapper_api.md) for underlying details of the algorithms.
 
 ## Getting Started 
 

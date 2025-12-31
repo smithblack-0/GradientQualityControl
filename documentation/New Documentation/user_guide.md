@@ -55,7 +55,7 @@ Optimizer wrappers which are or were intended to increase performance rather tha
 * **Gradient Norm Threshold Scheduling**: The current best algorithm. This works by associating the length of the gradients to be a proxy to gradient quality, and demanding the gradients be under a certain length before taking a step, allowing cancellation. The features "lr", "weight_decay", and "gradient_norm_threshold" are primary schedule targets. Normal operation is to warmup learning rate to a constant, warmup weight decay then cosine anneal, and inverse warmup then cosine anneal the gradient norm threshold. Like the Gradient Norm Rescaler this directly controls the length of the gradients, eliminating the need for a learning rate schedule.
 
 
-For more details on the actual objects, consult [Base Object API](base_object_api.md), or for details on why these are the right way to think about the abstractions consult [Research Guide](research_guide.md).
+For more details on the actual objects, consult [Optimizer Wrapper API](optimizer_wrapper_api.md), or for details on why these are the right way to think about the abstractions consult [Research Guide](research_guide.md).
 
 ## Wrapper Factories
 
