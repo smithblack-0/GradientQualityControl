@@ -71,11 +71,10 @@ Using the subclass to implement an algorithm requires knowledge of a few contrac
 
 **Subclasses must:**
 
-1. **Implement `step(closure=None) -> bool`**
+1. **Implement `step() -> bool`**
    - Return True/False for stepped/accumulating
    - Call `_batch_received()` once per batch
-   - Call `_take_optimizer_step(closure)` when stepping
-   - Support closure
+   - Call `_take_optimizer_step()` when stepping
 
 2. **Use state management**
    - Store all state via `set_state(name, value, flag)`
@@ -145,34 +144,30 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 The step method is where control algorithm logic lives. In standard PyTorch training, you call `optimizer.step()` after every batch. With wrappers, the training loop is unchanged - you still call `step()` after every batch - but now the wrapper intercepts to make a binary decision: actually step the optimizer, or continue accumulating gradients. This is the Sequential Binary Decision Controller pattern in action. Exact decision formula varies.
 
 ```python
-def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
+def step(self) -> bool
 ```
-
-**Parameters:**
-- `closure` (Optional[Callable[[], Any]]) - Optional closure for loss re-evaluation. Required for LBFGS compatibility. Forward to `_take_optimizer_step(closure)` when stepping.
 
 **Returns:**
 - `bool` - True if optimizer stepped this call, False if still accumulating
 
 **Implementation Pattern:**
 
-When implementing, you must call `_batch_received()` first to update counters, then implement your decision logic, then call `_take_optimizer_step(closure)` if you decide to step. Return True if you stepped, False if accumulating. Even if your algorithm doesn't use closures, the parameter must be supported and forwarded to `_take_optimizer_step()` for compatibility with optimizers like LBFGS.
+When implementing, you must call `_batch_received()` first to update counters, then implement your decision logic, then call `_take_optimizer_step()` if you decide to step. Return True if you stepped, False if accumulating.
 
 ```python
-def step(self, closure=None):
+def step(self):
     self._batch_received()  # Always first - updates counters
 
     # Decision logic here - examine gradients, metrics, schedules, etc.
     if should_step:
-        self._take_optimizer_step(closure)
+        self._take_optimizer_step()
         return True
     return False
 ```
 
 - Call `_batch_received()` exactly once at method start
-- Call `_take_optimizer_step(closure)` when deciding to step
+- Call `_take_optimizer_step()` when deciding to step
 - Return True/False indicating whether optimizer stepped
-- Support closure parameter (forward even if unused)
 - Called once per training batch
 
 ### statistics
@@ -444,11 +439,8 @@ The method executes a precise sequence: average gradients, compute L2 norm, step
 
 
 ```python
-def _take_optimizer_step(self, closure: Optional[Callable[[], Any]] = None) -> None
+def _take_optimizer_step(self) -> None
 ```
-
-**Parameters:**
-- `closure` (Optional[Callable[[], Any]]) - Optional closure passed to `optimizer.step(closure)` for optimizers like LBFGS
 
 **Contract**
 1. Average gradients: multiply all by `1 / num_draws`
@@ -456,7 +448,6 @@ def _take_optimizer_step(self, closure: Optional[Callable[[], Any]] = None) -> N
 3. Step wrapped optimizer with averaged gradients
 4. Zero all gradients
 5. Update state: store gradient norm, increment `num_steps`, reset `num_draws` to 0
-6. Cache optimizer return value (if closure provided) as "optimizer_return"
 
 **Throws:**
 - If `num_draws == 0` (cannot step without accumulated batches)
@@ -472,10 +463,9 @@ Properties that **must always hold:**
 5. **State preservation** - `state_dict()` → `load_state_dict()` preserves exact state
 6. **Transparent forwarding** - Non-overridden methods/attributes forward to `optimizer`
 7. **Required utilities** - Subclasses must use `_batch_received()` and `_take_optimizer_step()`
-8. **Closure support** - All subclasses must support closure parameter
-9. **Namespace separation** - `set_state()` cannot use optimizer param_group names
-10. **Immutable flags** - Vital/optional status cannot change once set
-11. **Anytime statistics** - `statistics()` and `vital_statistics()` work before first step
+8. **Namespace separation** - `set_state()` cannot use optimizer param_group names
+9. **Immutable flags** - Vital/optional status cannot change once set
+10. **Anytime statistics** - `statistics()` and `vital_statistics()` work before first step
 
 ## Subclass Implementation Contract
 
