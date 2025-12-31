@@ -2,8 +2,6 @@
 
 API reference for concrete optimizer wrapper implementations in Gradient Quality Control. For extending the base class, see [Base Object API](base_object_api.md). For usage patterns, see [User Guide](user_guide.md).
 
-**Note:** Some wrappers are production algorithms (GNTS), while others are research controls for isolating specific effects (SBC, GNR, GNS).
-
 ## Navigation
 
 - **[User Guide](user_guide.md)** - Usage patterns and library overview
@@ -55,7 +53,7 @@ The system will keep track of num_draws and compute when
 
 ```num_draws*physical_batch_size >= logical_batch_size.```
 
-When this condition occurs, the step decision is taken. This thus losslessly simulates a logical batch size greater than or equal to the logical batch size. As a consequence, it can only simulate sizes whcih are multiples of the physical batch size.
+When this condition occurs, the step decision is taken. This ensures the effective batch size meets or exceeds the requested logical batch size, though it can only achieve sizes which are multiples of the physical batch size.
 
 ### Step
 
