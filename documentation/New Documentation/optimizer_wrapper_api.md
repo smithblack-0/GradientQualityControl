@@ -221,3 +221,62 @@ def step(self, metric: float) -> bool
 - `metric` - Metric value for this batch (typically loss)
 
 **Returns:** True if optimizer stepped, False if still accumulating
+
+---
+
+## OptimizerWrapperGNS
+
+**Gradient Noise Scale**
+
+Research control inspired by McCandlish et al.'s gradient noise scale theory for adaptive batch sizing.
+
+### Constructor
+
+The constructor wraps an optimizer, and asks for exactly as much additional information as is needed for the algorithm to run. Specifically, it asks for
+
+```python
+def __init__(
+    self,
+    optimizer: torch.optim.Optimizer,
+    max_batch_draws: int = 64
+)
+```
+
+where
+
+**Parameters:**
+- `optimizer` - Configured PyTorch optimizer to wrap
+- `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+
+### Schedule Targets
+
+The following primary ScheduleAnything target is added
+
+- **`gradient_noise_to_signal_tolerance`** - Noise-to-signal ratio threshold injected by wrapper
+
+In addition the following two are almost always present on Adam optimizer derivatives
+
+- **`lr`** - Learning rate from wrapped optimizer
+- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Algorithm
+
+On each step call, the system tracks per-microbatch gradient norms and estimates the gradient noise scale using:
+
+```
+estimated_GNS = Var(||g_i||) / E[||g_i||²]
+```
+
+where `||g_i||` is the gradient norm for each accumulated microbatch. The step decision is taken when
+
+```estimated_GNS <= num_draws * gradient_noise_to_signal_tolerance```
+
+This criterion, inspired by McCandlish et al.'s work, balances noise reduction benefits against accumulation costs. The system will force a step when `num_draws >= max_batch_draws` regardless of the GNS estimate.
+
+### Step
+
+```python
+def step(self) -> bool
+```
+
+**Returns:** True if optimizer stepped, False if still accumulating
