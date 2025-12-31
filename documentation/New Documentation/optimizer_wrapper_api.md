@@ -14,9 +14,13 @@ API reference for concrete optimizer wrapper implementations in Gradient Quality
 
 ## OptimizerWrapperSBC
 
-**Scheduled Batch Controller** - Research control for fixed accumulation schedules.
+**Scheduled Batch Controller**
+
+Research control for fixed accumulation schedules. Usable to ask for a multiple of a physical batch size to attempt to maintain a given logical batch size. 
 
 ### Constructor
+
+The constructor wraps an optimizer, and asks for exactly as much additional information as is needed for the algorithm to run. Specifically, it asks for
 
 ```python
 def __init__(
@@ -27,6 +31,8 @@ def __init__(
 )
 ```
 
+where
+
 **Parameters:**
 - `optimizer` - Configured PyTorch optimizer to wrap
 - `physical_batch_size` - Size of each microbatch
@@ -34,13 +40,18 @@ def __init__(
 
 ### Schedule Targets
 
-- **`lr`** - Learning rate from wrapped optimizer
-- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+The following primary ScheduleAnything target is added
+
 - **`logical_batch_size`** - Target total batch size injected by wrapper. Wrapper accumulates until reaching this size (rounded to nearest multiple of physical_batch_size).
 
-### When to Use
+In addition the following two are almost always present on Adam optimizer derivatives
 
-Use when you want to fit arbitrary, possibly scheduled batch sizes in constant physical memory, or as a research baseline to isolate batch size effects from quality-based control decisions.
+- **`lr`** - Learning rate from wrapped optimizer
+- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Algorithm
+
+The system will keep track of num_draws and compute when num_draws*physical_batch_size >= logical_batch_size. When this condition occurs, the step decision is taken. This thus losslessly simulates a logical batch size greater than or equal to the logical batch size. As a consequence, it can only simulate sizes whcih are multiples of the physical batch size.
 
 ### Step
 
