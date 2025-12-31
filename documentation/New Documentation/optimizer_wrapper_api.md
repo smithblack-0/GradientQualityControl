@@ -115,3 +115,56 @@ def step(self) -> bool
 ```
 
 **Returns:** True if optimizer stepped, False if still accumulating
+
+---
+
+## OptimizerWrapperGNR
+
+**Gradient Norm Rescaler**
+
+Research control for isolating gradient direction effects from magnitude effects. Rescales all gradients to a fixed target norm before every optimizer step, ensuring constant gradient magnitude across training.
+
+### Constructor
+
+The constructor wraps an optimizer, and asks for exactly as much additional information as is needed for the algorithm to run. Specifically, it asks for
+
+```python
+def __init__(
+    self,
+    optimizer: torch.optim.Optimizer,
+    max_batch_draws: int = 64
+)
+```
+
+where
+
+**Parameters:**
+- `optimizer` - Configured PyTorch optimizer to wrap
+- `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+
+### Schedule Targets
+
+The following primary ScheduleAnything target is added
+
+- **`target_gradient_norm`** - Target gradient norm injected by wrapper. Wrapper rescales all gradients to match this norm before stepping.
+
+In addition the following two are almost always present on Adam optimizer derivatives
+
+- **`lr`** - Learning rate from wrapped optimizer
+- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Algorithm
+
+On each step call, the system computes the current gradient norm globally across all parameters, then rescales all gradients by the factor
+
+```rescale_factor = target_gradient_norm / current_gradient_norm```
+
+This ensures the gradient direction is preserved while the magnitude is set to exactly `target_gradient_norm`. The optimizer is then stepped with the rescaled gradients. This wrapper always steps on every call, never accumulating.
+
+### Step
+
+```python
+def step(self) -> bool
+```
+
+**Returns:** True (always steps)
