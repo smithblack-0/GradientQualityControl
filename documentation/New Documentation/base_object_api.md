@@ -467,28 +467,4 @@ Properties that **must always hold:**
 9. **Immutable flags** - Vital/optional status cannot change once set
 10. **Anytime statistics** - `statistics()` and `vital_statistics()` work before first step
 
-## Subclass Implementation Contract
 
----
-
-## Under the Hood
-
-*Implementation notes - not part of contract:*
-
-**Transparent forwarding:** `__getattribute__` and `__setattr__` intercept attribute access, forwarding to wrapped optimizer for anything not in wrapper class hierarchy.
-
-**wrapper_states storage:** Dictionary where `set_state()` writes `{name: {"value": X, "flag": "vital"/"optional"}}`. Methods filter by flag when building statistics.
-
-**Gradient averaging:** PyTorch's `.backward()` accumulates (sums) gradients. After $n$ backward passes, `_take_optimizer_step()` multiplies by $1/n$ to convert sum → mean.
-
----
-
-## Concrete Implementations
-
-*To be documented:*
-
-- **OptimizerWrapperGNTS** - Gradient Norm Threshold Scheduler (flagship)
-- **OptimizerWrapperSBC** - Scheduled Batch Controller
-- **OptimizerWrapperGNR** - Gradient Norm Rescaler
-- **OptimizerWrapperGNS** - Gradient Noise Scale
-- **OptimizerWrapperMHT** - Metric Hypothesis Test
