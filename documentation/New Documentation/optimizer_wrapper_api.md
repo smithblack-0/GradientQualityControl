@@ -51,7 +51,11 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 ### Algorithm
 
-The system will keep track of num_draws and compute when num_draws*physical_batch_size >= logical_batch_size. When this condition occurs, the step decision is taken. This thus losslessly simulates a logical batch size greater than or equal to the logical batch size. As a consequence, it can only simulate sizes whcih are multiples of the physical batch size.
+The system will keep track of num_draws and compute when 
+
+```num_draws*physical_batch_size >= logical_batch_size.```
+
+When this condition occurs, the step decision is taken. This thus losslessly simulates a logical batch size greater than or equal to the logical batch size. As a consequence, it can only simulate sizes whcih are multiples of the physical batch size.
 
 ### Step
 
