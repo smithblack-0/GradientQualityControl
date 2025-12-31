@@ -32,11 +32,11 @@ def make_sbc_with_polynomial_schedule(
 ### Parameters
 
 - `optimizer` - Configured PyTorch optimizer (uses existing lr and weight_decay values)
-- `physical_batch_size` - Size of each microbatch
-- `initial_batch_size` - Starting logical batch size
-- `final_batch_size` - Ending logical batch size
+- `physical_batch_size` - Size of each microbatch; required to infer logical batch size.
+- `initial_batch_size` - Starting logical batch size after warmup completed. 
+- `final_batch_size` - Ending logical batch size.
 - `total_steps` - Total training steps for schedule duration
-- `warmup_steps` - Steps for initial warmup phase
+- `warmup_steps` - Steps for initial warmup phase; Warmup executes by aggressively stepping
 - `polynomial_power` - Exponent for polynomial curve (default: 2.0 for quadratic)
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
 

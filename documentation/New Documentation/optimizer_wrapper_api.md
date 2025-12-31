@@ -12,9 +12,7 @@ API reference for concrete optimizer wrapper implementations in Gradient Quality
 
 ## OptimizerWrapperSBC
 
-**Scheduled Batch Controller**
-
-Research control for fixed accumulation schedules. Usable to ask for a multiple of a physical batch size to attempt to maintain a given logical batch size. 
+ A *control* controller for scheduling the logical batch size. It exposes for scheduling the entries "lr", "weight_decay", and "logical_batch_size". It is initialized with physical batch size, and will only invoke step once logical batch size from all steps to now exceed physical batch size. Generally, proper usage involves warming up the learning rate to a constant, warming up then cosine annealing the weight decay, and using some sort of inverse schedule, such as a low-to-high polynomial schedule, to start asking for a small number of batches that progressively increase.
 
 ### Constructor
 
@@ -69,7 +67,9 @@ def step(self) -> bool
 
 **Gradient Norm Threshold Scheduler**
 
-Production algorithm for adaptive batch sizing based on gradient quality. Accumulates gradients until their magnitude falls below a configurable threshold, providing automatic batch size tuning and gradient noise reduction.
+The current best production algorithm. Accumulates gradients until their magnitude falls below a configurable threshold, providing automatic batch size tuning and gradient noise reduction. This is known to produce certain quality guarantees. See research for those details.
+
+The features "lr", "weight_decay", and "gradient_norm_threshold" are primary schedule targets. Normal operation is to warmup learning rate to a constant, warmup weight decay then cosine anneal, and inverse warmup then cosine anneal the gradient norm threshold. Like the Gradient Norm Rescaler this directly controls the length of the gradients, eliminating the need for a learning rate schedule and thus producing more consistent Adam updates.
 
 ### Constructor
 
@@ -120,9 +120,11 @@ def step(self) -> bool
 
 ## OptimizerWrapperGNR
 
-**Gradient Norm Rescaler**
+A *control* wrapper which always steps, but also rescales the gradients to a constant scale during all steps before doing so. It exposes "weight_decay", "gradient_norm_target", and "lr" for scheduling. When used, it looks up the current gradient norm target, figures out the gradient norm, then rescales all gradients to that norm. It then immediately steps and zeros the gradients in the optimizer. 
 
-Research control for isolating gradient direction effects from magnitude effects. Rescales all gradients to a fixed target norm before every optimizer step, ensuring constant gradient magnitude across training.
+Usage is estimated to be best as learning rate to constant warmup, weight decay to warmup then cosine annealing, and cosine annealing of norm. This is because it replaces learning rate scheduling by directly controlling the length of the gradient instead. 
+
+Used to isolate how much gain comes from more consistent gradient lengths, which has synergetic effects with Adam optimizers and optimizers with second-moment curvature estimation.
 
 ### Constructor
 
@@ -175,7 +177,9 @@ def step(self) -> bool
 
 **Metric Hypothesis Test**
 
-Statistical wrapper for variance-based accumulation control. Accumulates metric samples (typically loss) across batches and uses a two-tailed t-test to determine when the confidence interval is sufficiently narrow, ensuring low-variance parameter updates.
+A controller that makes it's step decision based on variance in an observed metric. Once, given the metric samples, the controller is %confidence_level sure that the true metric has been found such that the confidence interval is under %percent_error. Features "lr", "confidence_level", and "percent_error_threshold" are exposed to ScheduleAnything. 
+
+ Accumulates metric samples (typically loss) across batches/devices and uses a two-tailed t-test to determine when the confidence interval is sufficiently narrow, ensuring low-variance parameter updates. We step, in other words, when we are confident what the true metric is. A typical use case would have one scheduling the learning rate using a cosine schedule, and confidence level and percent error threshold both warmup to a constant to allow early steps to proceed rapidly.
 
 ### Constructor
 
@@ -228,7 +232,9 @@ def step(self, metric: float) -> bool
 
 **Gradient Noise Scale**
 
-Research control inspired by McCandlish et al.'s gradient noise scale theory for adaptive batch sizing.
+Research control inspired by McCandlish et al.'s gradient noise scale theory for adaptive batch sizing. Largely a failed mechanism that did not correctly optimize performance, as it did not perform well under Adam.
+
+It exposes "lr" and "noise_tolerance"; noise tolerance is literally what the noise to signa ratio we are willing to tolerate. It delays taking steps until the GNS is below a threshold weighted by the cost of processing one more batch. 
 
 ### Constructor
 
@@ -252,7 +258,7 @@ where
 
 The following primary ScheduleAnything target is added
 
-- **`gradient_noise_to_signal_tolerance`** - Noise-to-signal ratio threshold injected by wrapper
+- **`noise_tolerance`** - Noise-to-signal ratio threshold injected by wrapper
 
 In addition the following two are almost always present on Adam optimizer derivatives
 
@@ -269,7 +275,7 @@ estimated_GNS = Var(||g_i||) / E[||g_i||²]
 
 where `||g_i||` is the gradient norm for each accumulated microbatch. The step decision is taken when
 
-```estimated_GNS <= num_draws * gradient_noise_to_signal_tolerance```
+```estimated_GNS <= num_draws * noise_tolerance```
 
 This criterion, inspired by McCandlish et al.'s work, balances noise reduction benefits against accumulation costs. The system will force a step when `num_draws >= max_batch_draws` regardless of the GNS estimate.
 
