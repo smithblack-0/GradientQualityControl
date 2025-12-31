@@ -64,64 +64,22 @@ Attempts to initialize and set fields on the class directly will throw, and in f
 
 ## Underlying Details
 
-*This section explains how the base class achieves the contract. This helps implementers understand the mechanism, but is not part of the contract itself.*
+*Essential technical facts for implementers. Not part of the contract itself.*
 
-### Gradient Accumulation Mechanism
+**Counters:**
+- `num_batches` - Total batches processed since wrapper creation
+- `num_steps` - Total optimizer steps taken
+- `num_draws` - Batches accumulated since last step (resets to 0 after each step)
 
-PyTorch's `.backward()` accumulates gradients by default - it sums them into `.grad`. After N consecutive backward passes without zeroing, each parameter's `.grad` contains the sum of N batches' gradients.
+**Gradient Accumulation:**
+PyTorch's `.backward()` sums gradients into `.grad` by default. After N consecutive backward passes, each parameter's `.grad` contains the sum of N batches. The wrapper exploits this: `_take_optimizer_step()` multiplies all gradients by `1/N` to convert sum → mean before stepping.
 
-The wrapper exploits this: when `_take_optimizer_step()` is called, it multiplies all gradients by `1/N` (where N = `num_draws`) to convert the sum into a mean. The optimizer then steps with these averaged gradients.
-
-This is how the wrapper adaptively controls effective batch size in constant memory - accumulation happens naturally, averaging happens on-demand.
-
-### State Management Design
-
-All wrapper state lives in `wrapper_states`, a dictionary storing: `{name: {"value": X, "flag": "vital"/"optional"}}`.
-
-The only interface is `set_state()` and `get_state()`. Why? **Serialization guarantee.** When `state_dict()` is called, it simply dumps `wrapper_states` + the wrapped optimizer's state. When `load_state_dict()` restores, it reloads this dict.
-
-If subclasses set fields directly (e.g., `self.my_threshold = 0.5`), those fields won't be in `wrapper_states` and won't serialize. To prevent this bug, direct field setting after initialization throws an error, forcing use of `set_state()`.
-
-### Transparent Optimizer Proxying
-
-The wrapper implements `__getattribute__` and `__setattr__` to intercept all attribute access:
-- If the attribute exists in the wrapper class hierarchy (e.g., `step`, `statistics`): use wrapper's version
-- Otherwise: forward to the wrapped optimizer
-
-This is why `wrapper.param_groups`, `wrapper.state`, and `wrapper.add_param_group()` all work transparently - they're automatically forwarded to the underlying optimizer. The wrapper satisfies `isinstance(wrapper, Optimizer)` and works with existing PyTorch tooling.
-
-### Counter Tracking
-
-The built-in counters (`num_batches`, `num_steps`, `num_draws`) are stored via `set_state()` and marked vital:
-- `_received_batch()` increments `num_batches` and `num_draws`
-- `_take_optimizer_step()` increments `num_steps` and resets `num_draws` to 0
-
-Because they're in `wrapper_states`, they automatically serialize/deserialize correctly.
-
-### Statistics Filtering
-
-Both `statistics()` and `vital_statistics()` pull from two sources:
-1. **wrapper_states**: All entries (statistics) or only vital-flagged (vital_statistics)  
-2. **optimizer.param_groups**: All float-valued keys in both cases
-
-For multi-group parameters:
-- If all groups have same value: return as-is (e.g., `"lr": 0.001`)
-- If groups differ: add `*` suffix and aggregate (e.g., `"lr*": 0.0015` with mean)
-
-The `aggregate_lists` parameter in `get_state()` controls aggregation: `None` (return list), `"mean"`, `"max"`, or `"min"`.
+**State Storage:**
+All wrapper state lives in `wrapper_states`: `{name: {"value": X, "flag": "vital"/"optional"}}`. Access only through `set_state()` and `get_state()`. Direct field assignment after initialization throws to prevent serialization bugs - if it's not in `wrapper_states`, it won't survive `state_dict()`/`load_state_dict()`.
 
 ---
 
-
-## Implementation Details
-
-The base class implements the following responsibilities
-
-1) Provide support for drawing multiple batches and average gradients when it is time to take an optimizer step.
-2) 
-All information is stored in one of two places. These places are
-
-* 
+## Method Specifications
 
 ### Constructor
 
@@ -129,14 +87,24 @@ All information is stored in one of two places. These places are
 def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int)
 ```
 
+The constructor wraps an existing PyTorch optimizer to add gradient accumulation control. Instead of creating an optimizer directly, you create your optimizer as normal (Adam, SGD, etc.) and then wrap it. The wrapper intercepts calls to `step()` to implement your control algorithm while maintaining full compatibility with the underlying optimizer's behavior. You pass an already-configured optimizer with learning rate, weight decay, and other hyperparameters set.
+
+The `max_draws` parameter provides a safety bound on accumulation - if your control algorithm hasn't stepped by the time this many batches accumulate, the wrapper forces a step. This prevents unbounded memory growth from gradient accumulation and ensures training progress even if the control algorithm's conditions are never met. Set this based on your memory constraints and minimum acceptable step frequency.
+
 **Parameters:**
-- **`optimizer`** - The PyTorch optimizer to wrap
-- **`max_draws`** - Maximum number of batches that can accumulate before forcing an optimizer step
+- `optimizer` (torch.optim.Optimizer) - Configured PyTorch optimizer to wrap. The wrapper delegates all optimizer behavior to this instance.
+- `max_draws` (int) - Maximum batches that can accumulate before forcing a step. Must be ≥ 1.
 
 **Initializes:**
-- Wraps the optimizer
-- Sets up wrapper state: `num_batches`, `num_steps`, `num_draws`
-- Configures `max_draws`
+- Wraps the optimizer for transparent delegation
+- Initializes counters: `num_batches=0`, `num_steps=0`, `num_draws=0`
+- Stores `max_draws` as safety bound
+
+**Usage Example:**
+```python
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+wrapper = OptimizerWrapperGNTS(optimizer, max_draws=32)  # Subclass implementation
+```
 
 ---
 
@@ -146,19 +114,36 @@ def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int)
 def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
 ```
 
-**Abstract - must be implemented by subclasses.**
+**Must be implemented by subclasses.**
+
+The step method is where control algorithm logic lives. In standard PyTorch training, you call `optimizer.step()` after every batch. With wrappers, the training loop is unchanged - you still call `step()` after every batch - but now the wrapper intercepts to make a binary decision: actually step the optimizer, or continue accumulating gradients. This is the Sequential Binary Decision Controller pattern in action. The subclass examines gradient quality, noise estimates, schedules, or any other criterion to decide whether conditions warrant stepping. The base class handles gradient averaging, counter updates, and state management through the protected methods.
+
+When implementing, you must call `_batch_received()` first to update counters, then implement your decision logic, then call `_take_optimizer_step(closure)` if you decide to step. Return True if you stepped, False if accumulating. Even if your algorithm doesn't use closures, the parameter must be supported and forwarded to `_take_optimizer_step()` for compatibility with optimizers like LBFGS.
 
 **Parameters:**
-- **`closure`** - Optional closure (e.g., for LBFGS). **Support required by contract.**
+- `closure` (Optional[Callable[[], Any]]) - Optional closure for loss re-evaluation. Required for LBFGS compatibility. Forward to `_take_optimizer_step(closure)` when stepping.
 
 **Returns:**
-- **`bool`** - `True` if optimizer stepped this call, `False` if still accumulating
+- `bool` - True if optimizer stepped this call, False if still accumulating
+
+**Implementation Pattern:**
+```python
+def step(self, closure=None):
+    self._batch_received()  # Always first - updates counters
+
+    # Decision logic here - examine gradients, metrics, schedules, etc.
+    if should_step:
+        self._take_optimizer_step(closure)
+        return True
+    return False
+```
 
 **Contract:**
-- Must return bool indicating whether optimizer stepped
-- Must call `_batch_received()` to update counters
-- Should call `_take_optimizer_step(closure)` when deciding to step
-- Call once per batch in training loop
+- Call `_batch_received()` exactly once at method start
+- Call `_take_optimizer_step(closure)` when deciding to step
+- Return True/False indicating whether optimizer stepped
+- Support closure parameter (forward even if unused)
+- Called once per training batch
 
 ---
 
@@ -168,19 +153,27 @@ def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
 def statistics(self) -> Dict[str, Any]
 ```
 
-**Returns complete statistics dictionary.**
+The statistics method provides complete visibility into the wrapper's internal state and the underlying optimizer's configuration. Call this when you need to log detailed training metrics, debug unexpected behavior, analyze algorithm performance, or export comprehensive training data. It returns everything - all wrapper state (both vital and optional), all optimizer hyperparameters, and all counters. This is the "full dump" for comprehensive monitoring, analysis, or debugging.
+
+The method pulls from two sources: wrapper state (counters, algorithm parameters, cached metrics) and optimizer parameter groups (lr, weight decay, momentum, etc.). For optimizers with multiple parameter groups where a value differs across groups (e.g., different learning rates), the method aggregates by computing the mean and adds a `*` suffix to the key. This gives you a single number to monitor while signaling heterogeneity. If all groups have the same value, it returns that value without suffix.
+
+This method is read-only and deterministic - calling it never modifies state, and the same state always produces the same output. You can call it as many times as needed, even before the first step.
+
+**Returns:**
+- `Dict[str, Any]` - Complete statistics dictionary
 
 **Contents:**
-- All entries in `wrapper_states` (vital and optional)
+- All entries in `wrapper_states` (both vital and optional)
 - All float-valued keys from `optimizer.param_groups`
-- For multi-group params with different values: key + `*` suffix, mean value
-- For multi-group params with same value: key without suffix
+- Multi-group parameters:
+  - Same value across groups: `"lr": 0.001`
+  - Different values: `"lr*": 0.0015` (mean, with `*` suffix)
 
 **Properties:**
-- Read-only (never modifies state)
-- Deterministic (same state → same output)
+- Read-only - never modifies state
+- Deterministic - same state produces same output
 - Can call multiple times per step
-- Can call before first step
+- Works before first step
 
 **Example:**
 ```python
@@ -203,22 +196,38 @@ def statistics(self) -> Dict[str, Any]
 def vital_statistics(self) -> Dict[str, Any]
 ```
 
-**Returns curated statistics for tqdm/logging.**
+The vital_statistics method returns a curated subset of statistics designed for real-time monitoring during training. Call this to populate progress bars (tqdm), training dashboards, or logging systems where you need to track key health metrics without overwhelming the display. It's the "health dashboard" - just the metrics that matter for monitoring training progress and diagnosing problems at a glance.
+
+Unlike `statistics()` which returns everything, this method filters to only vital metrics - those marked with `flag="vital"` when stored via `set_state()`. Subclasses decide what's vital: counters like num_batches and num_draws are always vital, and algorithm-specific metrics like gradient norms or quality thresholds should be marked vital if they're key performance indicators. The method also includes optimizer hyperparameters (lr, weight decay, etc.) since these are essential for understanding training behavior, especially with schedulers. Same aggregation rules apply: `*` suffix with mean for multi-group parameters that differ.
+
+This method is read-only, deterministic, and safe to call frequently. It's a strict subset of `statistics()` - every key in vital_statistics also appears in statistics.
+
+**Returns:**
+- `Dict[str, Any]` - Curated vital statistics dictionary
 
 **Contents:**
-- All wrapper_states entries marked `flag="vital"`
+- wrapper_states entries marked `flag="vital"`
 - `num_batches` and `num_draws` (always vital)
 - All float-valued keys from `optimizer.param_groups`
-- Same aggregation rules as `statistics()` (mean with `*` for different values)
+- Multi-group aggregation: same rules as `statistics()`
 
 **Properties:**
-- Read-only
-- Deterministic
-- Subset of `statistics()`
-- Can call before first step
+- Read-only - never modifies state
+- Deterministic - same state produces same output
+- Strict subset of `statistics()`
+- Works before first step
 
-**Purpose:**
-The "health dashboard" - key metrics for progress bars and training dashboards.
+**Use Cases:**
+```python
+from tqdm import tqdm
+
+pbar = tqdm(train_loader)
+for batch in pbar:
+    # ... forward, backward ...
+    stepped = wrapper.step()
+
+    pbar.set_postfix(wrapper.vital_statistics())  # Real-time monitoring
+```
 
 ---
 
@@ -228,13 +237,36 @@ The "health dashboard" - key metrics for progress bars and training dashboards.
 def state_dict(self) -> Dict[str, Any]
 ```
 
-**Contract:**
-If you `state = wrapper.state_dict()`, restart process, create new wrapper, then `wrapper.load_state_dict(state)`, training resumes **exactly** where it left off. No observable difference from never stopping.
+The state_dict method serializes the complete wrapper state for checkpointing. Call this periodically during training to save checkpoints - if training crashes, gets preempted, or you want to resume later, you can restore to this exact point. This is PyTorch's standard checkpointing pattern extended to wrappers. The method captures everything needed for lossless resumption: all wrapper state (counters, algorithm parameters, cached metrics), the complete optimizer state (momentum buffers, adaptive learning rate state, etc.), and any other internal state.
+
+The guarantee is strong: if you call `state = wrapper.state_dict()`, save it, restart the process, create a new wrapper with the same configuration, and call `wrapper.load_state_dict(state)`, training resumes exactly where it left off. No observable difference from never stopping - same counters, same accumulated gradients (via num_draws), same optimizer momentum, same everything. This works because the wrapper stores all state through `set_state()` which writes to `wrapper_states`, and state_dict dumps both `wrapper_states` and `optimizer.state_dict()`.
+
+**Returns:**
+- `Dict[str, Any]` - Complete serialized state
 
 **Preserves:**
-- All `wrapper_states` (vital and optional)
-- Complete `optimizer.state_dict()`
-- All counters and cached values
+- All `wrapper_states` (vital and optional entries)
+- Complete `optimizer.state_dict()` (optimizer state, momentum, etc.)
+- All counters (num_batches, num_steps, num_draws)
+- All cached values and algorithm parameters
+
+**Contract:**
+Lossless resumption - `state_dict()` → save → restart → `load_state_dict()` → training continues exactly as if never interrupted.
+
+**Usage Pattern:**
+```python
+checkpoint = {
+    'model': model.state_dict(),
+    'wrapper': wrapper.state_dict(),
+    'epoch': epoch
+}
+torch.save(checkpoint, 'checkpoint.pt')
+
+# Later, resume:
+checkpoint = torch.load('checkpoint.pt')
+model.load_state_dict(checkpoint['model'])
+wrapper.load_state_dict(checkpoint['wrapper'])
+```
 
 ---
 
@@ -244,11 +276,29 @@ If you `state = wrapper.state_dict()`, restart process, create new wrapper, then
 def load_state_dict(self, state_dict: Dict[str, Any]) -> None
 ```
 
+The load_state_dict method restores wrapper state from a checkpoint created by `state_dict()`. Call this after creating a new wrapper instance to resume training from a saved checkpoint. This is the restore half of PyTorch's checkpointing pattern - you create a fresh wrapper with the same configuration (same optimizer type, same max_draws), then load the saved state to pick up exactly where training left off.
+
+The method restores everything: wrapper state (counters, algorithm parameters, cached values), optimizer state (momentum buffers, learning rate state, parameter-specific state), and all internal structures. After loading, the wrapper behaves identically to the wrapper that created the checkpoint - same num_batches count, same num_draws accumulation state, same everything. You can continue training seamlessly.
+
+The typical pattern: save checkpoints periodically during training, and on startup (or after crash), check if a checkpoint exists and load it. This provides fault tolerance and allows pausing/resuming training.
+
 **Parameters:**
-- **`state_dict`** - State from `state_dict()`
+- `state_dict` (Dict[str, Any]) - State dictionary from `state_dict()` method
 
 **Contract:**
-Restores wrapper to exact state when `state_dict()` was called. Training continues seamlessly.
+Restores wrapper to exact state when `state_dict()` was called. Training continues seamlessly with no observable difference from never stopping.
+
+**Usage Pattern:**
+```python
+# At startup - resume if checkpoint exists
+if os.path.exists('checkpoint.pt'):
+    checkpoint = torch.load('checkpoint.pt')
+    model.load_state_dict(checkpoint['model'])
+    wrapper.load_state_dict(checkpoint['wrapper'])
+    start_epoch = checkpoint['epoch'] + 1
+else:
+    start_epoch = 0
+```
 
 ---
 
@@ -260,11 +310,32 @@ def zero_grad(self) -> None
 
 **Raises:** `NotImplementedError` - Always.
 
+The zero_grad method is intentionally disabled and always raises an error. This is a safety mechanism to prevent a common mistake when migrating to optimizer wrappers. In standard PyTorch training, you call `optimizer.zero_grad()` at the start of each batch. With wrappers, this pattern breaks gradient accumulation - the wrapper needs gradients to accumulate across multiple batches, and clearing them would corrupt the accumulation logic.
+
+The wrapper handles gradient clearing automatically inside `_take_optimizer_step()` - after averaging and stepping, it zeros gradients. You never manually zero gradients with wrappers. This method exists solely to fail fast with a clear error message instead of silently corrupting training when someone forgets and calls `zero_grad()` out of habit.
+
 **Contract:**
-Users must **never** call `zero_grad()` with optimizer wrappers. The wrapper manages gradient clearing. This method exists only to fail fast with a clear error instead of silent corruption.
+Always raises `NotImplementedError`. Never call this method.
 
 **Rationale:**
-Wrappers accumulate gradients across batches. Calling `zero_grad()` breaks accumulation.
+Wrappers accumulate gradients across batches. Manual gradient clearing would break accumulation and corrupt training. The wrapper manages gradients internally.
+
+**Migration Note:**
+```python
+# Old pattern (standard optimizer):
+for batch in loader:
+    optimizer.zero_grad()
+    loss = model(batch)
+    loss.backward()
+    optimizer.step()
+
+# New pattern (with wrapper):
+for batch in loader:
+    # No zero_grad() call!
+    loss = model(batch)
+    loss.backward()
+    wrapper.step()  # Wrapper handles everything
+```
 
 ---
 
@@ -276,21 +347,45 @@ def set_state(self, name: str, value: Any, flag: Literal["vital", "optional"]) -
 
 **For subclass implementation - stores wrapper state.**
 
+The set_state method is how subclasses store algorithm parameters, cached metrics, and any other state. Call this in your `__init__` to initialize state, and in your `step()` implementation to update state as training progresses. This is the only way to store state in subclasses - direct field assignment (e.g., `self.threshold = 0.5`) is prohibited after initialization and will throw an error.
+
+Why the restriction? Serialization guarantee. All state stored through `set_state()` goes into `wrapper_states`, which `state_dict()` automatically serializes. If you set fields directly, they won't be in `wrapper_states` and won't survive checkpointing. The wrapper enforces this at runtime to prevent silent serialization bugs that only show up when you try to resume training.
+
+The `flag` parameter controls whether this state appears in `vital_statistics()` (for tqdm/logging) or only in `statistics()` (for comprehensive dumps). Mark counters and key metrics as vital; mark internal caches and intermediate values as optional. Once set, the flag is immutable - attempting to change it throws an error to prevent inconsistencies.
+
 **Parameters:**
-- **`name`** - State variable name
-- **`value`** - Value to store (must be serializable)
-- **`flag`** - `"vital"` (appears in `vital_statistics()`) or `"optional"` (only in `statistics()`)
+- `name` (str) - State variable name. Cannot collide with optimizer param_group keys (lr, weight_decay, etc.)
+- `value` (Any) - Value to store. Must be serializable (primitives, lists, dicts, tensors, etc.)
+- `flag` (Literal["vital", "optional"]) - Controls visibility in `vital_statistics()`. Required, no default.
 
 **Contract:**
-- Stores in `wrapper_states`
-- `flag` parameter required (no default)
-- If name exists: updates value, flag must match (throws if flag changes)
-- If name exists in `optimizer.param_groups`: **throws** (namespace collision)
-- Creates new entry on first call
+- Stores in `wrapper_states` dictionary
+- Creates new entry on first call for this name
+- Updates value on subsequent calls (flag must match original)
+- Throws if name collides with `optimizer.param_groups` keys
+- Throws if flag differs from original flag for this name
 
-**Throws:**
-- If `name` matches optimizer param_group key (e.g., "lr", "weight_decay")
-- If `name` exists but `flag` differs from stored flag
+**Usage Example:**
+```python
+def __init__(self, optimizer, max_draws, threshold):
+    super().__init__(optimizer, max_draws)
+    self.set_state("gradient_norm_threshold", threshold, "vital")
+    self.set_state("last_decision", None, "optional")
+
+def step(self, closure=None):
+    self._batch_received()
+
+    grad_norm = self.get_state("last_grad_norm")
+    threshold = self.get_state("gradient_norm_threshold")
+
+    if grad_norm < threshold:
+        self.set_state("last_decision", "step", "optional")
+        self._take_optimizer_step(closure)
+        return True
+    else:
+        self.set_state("last_decision", "accumulate", "optional")
+        return False
+```
 
 ---
 
@@ -302,23 +397,35 @@ def get_state(self, name: str) -> Any
 
 **Unified interface for both wrapper and optimizer state.**
 
-**Returns:** The state value (just the value, not metadata)
+The get_state method retrieves state from either the wrapper or the underlying optimizer through a single unified interface. Call this in your `step()` implementation to access algorithm parameters, counters, cached metrics, or optimizer hyperparameters. Instead of checking "is this in wrapper_states or optimizer.param_groups?", you just call `get_state()` and it searches both.
+
+This unified access pattern is particularly useful for subclass implementations that need to examine both wrapper state (like gradient norms or batch counts) and optimizer state (like current learning rate or weight decay). The method searches wrapper_states first, then falls back to optimizer.param_groups. For multi-group optimizers where a parameter differs across groups, it returns the mean by default, giving you a single number to work with in your decision logic.
+
+The method returns just the value, not metadata. For wrapper state, it strips the flag and returns the value. For optimizer state, it aggregates across parameter groups if needed. If the name isn't found in either location, it crashes with a clear error.
+
+**Returns:**
+- `Any` - The state value (just the value, not metadata)
 
 **Contract - Search Order:**
 1. If `name` in `wrapper_states`: return that value
 2. Else if `name` in `optimizer.param_groups`:
    - All groups same value → return that value
    - Groups have different values → return mean
-3. Else: crash (not found)
+3. Else: throw error (not found)
 
 **Purpose:**
-Transparent access to both wrapper state (`num_batches`, custom thresholds) and optimizer state (`lr`, `weight_decay`) through one interface.
+Transparent access to both wrapper state (`num_batches`, custom thresholds) and optimizer state (`lr`, `weight_decay`) through one interface. Simplifies subclass implementation by eliminating manual source checking.
 
 **Example:**
 ```python
 threshold = wrapper.get_state("gradient_norm_threshold")  # from wrapper_states
 lr = wrapper.get_state("lr")  # from optimizer.param_groups
 batches = wrapper.get_state("num_batches")  # from wrapper_states (vital)
+
+# In multi-group optimizer with different lrs:
+# param_groups[0]['lr'] = 0.001
+# param_groups[1]['lr'] = 0.01
+# get_state("lr") returns 0.0055 (mean)
 ```
 
 ---
@@ -331,13 +438,30 @@ def _batch_received(self) -> None
 
 **For subclasses - required to use.**
 
+The _batch_received method handles centralized counter updates when a batch is processed. Call this at the start of your `step()` implementation, before any decision logic. The method increments `num_batches` (total batches processed since creation) and `num_draws` (batches accumulated since last optimizer step). It also enforces the `max_draws` safety bound - if calling this would push num_draws beyond max_draws, it throws an error to prevent unbounded accumulation.
+
+Why centralized counter management? Consistency and invariant enforcement. If every subclass manually incremented counters, bugs would slip through - forgetting to increment, incrementing twice, not checking max_draws, etc. Centralizing this logic in one method that all subclasses must call ensures counters stay correct and invariants hold. The method uses `set_state()` to update counters, so they automatically serialize and appear in statistics.
+
+Subclasses must call this exactly once per batch, typically as the first line of `step()`. Calling it zero times means counters don't advance (broken statistics). Calling it multiple times per batch means counters advance too fast (broken invariants). The base class can't call it automatically because only the subclass knows when a batch has been processed.
+
 **Contract:**
-- Increments `num_batches` and `num_draws` via `set_state()`
+- Increments `num_batches` (lifetime batch counter)
+- Increments `num_draws` (accumulation counter)
 - Throws if `num_draws` would exceed `max_draws`
-- Subclasses **must** call once per batch (typically at start of `step()`)
+- Subclasses must call exactly once per batch
+- Typically called at start of `step()` before decision logic
 
 **Purpose:**
-Centralized counter management to maintain invariants.
+Centralized counter management to maintain invariants consistently across all subclass implementations.
+
+**Usage:**
+```python
+def step(self, closure=None):
+    self._batch_received()  # Always first!
+
+    # Your decision logic here
+    ...
+```
 
 ---
 
@@ -349,6 +473,15 @@ def _take_optimizer_step(self, closure: Optional[Callable[[], Any]] = None) -> N
 
 **For subclasses - required to use when stepping.**
 
+The _take_optimizer_step method encapsulates the entire gradient averaging and optimizer stepping process. Call this in your `step()` implementation when your decision logic determines it's time to step the optimizer. This is the only way to step the optimizer - directly calling `self.optimizer.step()` bypasses gradient averaging and breaks the wrapper's contract.
+
+Why must subclasses use this? Gradient averaging guarantee. PyTorch's `.backward()` sums gradients across multiple backward passes. If you've accumulated N batches (num_draws = N), each parameter's `.grad` contains the sum of N batches' gradients. This method divides all gradients by N to convert sum → mean, then steps the optimizer with the averaged gradients. After stepping, it zeros gradients for the next accumulation cycle, increments counters, and caches the gradient norm for statistics.
+
+The method executes a precise sequence: average gradients, compute L2 norm, step optimizer, zero gradients, update counters and state. This sequence ensures the gradient averaging invariant holds consistently. If subclasses step the optimizer directly, they skip averaging and the optimizer sees summed gradients instead of means - wrong effective batch size, broken training dynamics. The method also throws if num_draws is 0 (no batches accumulated yet), preventing invalid steps.
+
+**Parameters:**
+- `closure` (Optional[Callable[[], Any]]) - Optional closure passed to `optimizer.step(closure)` for optimizers like LBFGS
+
 **Contract - Execution Order:**
 1. Average gradients: multiply all by `1 / num_draws`
 2. Compute L2 gradient norm across all parameters
@@ -357,14 +490,23 @@ def _take_optimizer_step(self, closure: Optional[Callable[[], Any]] = None) -> N
 5. Update state: store gradient norm, increment `num_steps`, reset `num_draws` to 0
 6. Cache optimizer return value (if closure provided)
 
-**Parameters:**
-- **`closure`** - Passed to `optimizer.step(closure)`
-
 **Throws:**
 - If `num_draws == 0` (cannot step without accumulated batches)
 
 **Purpose:**
-Ensures gradient averaging invariant maintained consistently. Subclasses **must** use this to step - bypassing it violates the contract.
+Ensures gradient averaging invariant maintained consistently. Subclasses **must** use this to step - bypassing it violates the contract and produces incorrect training behavior.
+
+**Usage:**
+```python
+def step(self, closure=None):
+    self._batch_received()
+
+    # Decision logic
+    if should_step:
+        self._take_optimizer_step(closure)  # Only way to step
+        return True
+    return False
+```
 
 ---
 
