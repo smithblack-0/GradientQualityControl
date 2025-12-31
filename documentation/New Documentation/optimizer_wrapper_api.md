@@ -115,8 +115,6 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         self.set_state("last_grad_norm", None, "optional")
 ```
 
----
-
 ### step (Abstract)
 
 ```python
@@ -153,8 +151,6 @@ def step(self, closure=None):
 - Return True/False indicating whether optimizer stepped
 - Support closure parameter (forward even if unused)
 - Called once per training batch
-
----
 
 ### statistics
 
@@ -204,8 +200,6 @@ stats_max = wrapper.statistics(aggregate_behavior="max")
 # weight_decay* would be max instead of mean
 ```
 
----
-
 ### vital_statistics
 
 ```python
@@ -248,8 +242,6 @@ for batch in pbar:
     pbar.set_postfix(wrapper.vital_statistics())  # Real-time monitoring
 ```
 
----
-
 ### state_dict
 
 ```python
@@ -287,8 +279,6 @@ model.load_state_dict(checkpoint['model'])
 wrapper.load_state_dict(checkpoint['wrapper'])
 ```
 
----
-
 ### load_state_dict
 
 ```python
@@ -318,8 +308,6 @@ if os.path.exists('checkpoint.pt'):
 else:
     start_epoch = 0
 ```
-
----
 
 ### zero_grad
 
@@ -355,8 +343,6 @@ for batch in loader:
     loss.backward()
     wrapper.step()  # Wrapper handles everything
 ```
-
----
 
 ### set_state (For Subclasses)
 
@@ -405,8 +391,6 @@ def step(self, closure=None):
         self.set_state("last_decision", "accumulate", "optional")
         return False
 ```
-
----
 
 ### get_state (Unified Access)
 
@@ -458,8 +442,6 @@ lr_list = wrapper.get_state("lr", aggregate_lists=None)  # raw list
 # get_state("lr", None) returns [0.001, 0.01]
 ```
 
----
-
 ### _batch_received (Protected)
 
 ```python
@@ -492,8 +474,6 @@ def step(self, closure=None):
     # Your decision logic here
     ...
 ```
-
----
 
 ### _take_optimizer_step (Protected)
 
