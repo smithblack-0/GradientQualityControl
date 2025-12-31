@@ -36,14 +36,13 @@ This library is designed exclusively for the PyTorch ecosystem, and has been tri
 
 If you are doing one of the following things.
 
-* Prototyping in under 10B parameters on a single device or with PyTorch DDP and do not want to have to fine tune your batch size.
+* Prototyping in under 10B parameters on a single device or with PyTorch DDP or FSDP and do not want to have to fine tune your batch size.
 * Looking for a solution that does not require retuning every time you change model sizes or physical batch size.
 
 Then the flagship algorithm shown in the Getting Started guide is likely an excellent choice. It will ensure your batch size is approximately ideal, letting you focus on prototyping rather than worrying if your prototype is not useful, or the batch size was just set correctly. Other than that, it will largely stay out of your way. If you are:
 
 * Moving towards a large scale production capability.
-* Intending to use FSDP.
-* Going to use non-replicated distributed functionality.
+* Going to use capacity that has some replication of parameters and some sharding.
 
 Then you are currently unsupported and would have to implement your own algorithm. Practitioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Base Object API](base_object_api.md) as well.
 

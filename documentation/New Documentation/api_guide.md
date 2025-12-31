@@ -12,7 +12,10 @@ Convenience factory functions for creating pre-configured optimizer wrapper and 
 
 ## make_sbc_with_polynomial_schedule
 
-Creates an OptimizerWrapperSBC with polynomial batch size schedule.
+Allows following a polynomial curve from initial batch size to final batch size with an included warmup; usable to schedule the batch size directly. Learning rate is warmed up to a constant, batch size is by polynomial schedule, and weight decay is by cosine annealing to account for removed learninig rate schedule. Generally, go from small to large batches. 
+
+
+
 
 ### Signature
 

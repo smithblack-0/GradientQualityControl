@@ -23,7 +23,8 @@ def __init__(
     self,
     optimizer: torch.optim.Optimizer,
     physical_batch_size: int,
-    max_batch_draws: int = 64
+    max_batch_draws: int = 64,
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None
 )
 ```
 
@@ -33,7 +34,7 @@ where
 - `optimizer` - Configured PyTorch optimizer to wrap
 - `physical_batch_size` - Size of each microbatch
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
-
+- `distributed_mode` - One of "replicated", "sharded", influencing what a batch is considered to be.
 ### Schedule Targets
 
 The following primary ScheduleAnything target is added
@@ -44,6 +45,13 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 - **`lr`** - Learning rate from wrapped optimizer
 - **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Distributed Support
+
+We presume the same batch size is used on all devices. When it is detected that this is operating in a distributed environment, the distributed flag must be set to one of "replicated" or "sharded". These have the following effects:
+
+- **Replicated**: Each batch on each device counts individually. physical batch size is multiplied by the number of devices
+- **Sharded**: The batches are the same on all devices. No change.
 
 ### Algorithm
 
@@ -79,7 +87,8 @@ The constructor wraps an optimizer, and asks for exactly as much additional info
 def __init__(
     self,
     optimizer: torch.optim.Optimizer,
-    max_batch_draws: int = 64
+    max_batch_draws: int = 64,
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None
 )
 ```
 
@@ -88,6 +97,7 @@ where
 **Parameters:**
 - `optimizer` - Configured PyTorch optimizer to wrap
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+- `distributed_mode` - One of "replicated", "sharded". Replicated is used for data parallel processes like DDP, while sharded for model parallel processes. These influence how to merge metrics.
 
 ### Schedule Targets
 
@@ -99,6 +109,15 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 - **`lr`** - Learning rate from wrapped optimizer
 - **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Distributed Support
+
+When it is detected that a distributed mode is being used, the distributed mode flag must be set to either replicated or sharded. These have the following behaviors
+
+- **`replicated`**: No change in behavior. Gradient norms are replicated before the system gets a chance to check, and we are automatically taking the norms of synchronized gradients, so no change is needed.
+- **`sharded`**: The norm on each device is presumed to be part of the whole norm, and needs to be added up. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 
+
+Cases involving both replication and sharding are not currently supported. Submit a pull request if interested. Under the hood we use torch distributed utilities. 
 
 ### Algorithm
 
@@ -134,7 +153,8 @@ The constructor wraps an optimizer, and asks for exactly as much additional info
 def __init__(
     self,
     optimizer: torch.optim.Optimizer,
-    max_batch_draws: int = 64
+    max_batch_draws: int = 64,
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 )
 ```
 
@@ -143,6 +163,7 @@ where
 **Parameters:**
 - `optimizer` - Configured PyTorch optimizer to wrap
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+- `distributed_mode` - One of "replicated", "sharded". Replicated is used for data parallel processes like DDP, while sharded for model parallel processes. These influence how to merge metrics.
 
 ### Schedule Targets
 
@@ -154,6 +175,15 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 - **`lr`** - Learning rate from wrapped optimizer
 - **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Distributed Support
+
+When it is detected that a distributed mode is being used, the distributed mode flag must be set to either replicated or sharded. These have the following behaviors
+
+- **`replicated`**: No change in behavior. Gradient norms are replicated during backwards pass automatically so no change is needed.
+- **`sharded`**: The norm on each device is presumed to be part of the whole norm, and needs to be added up. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 
+
+Cases involving both replication and sharding are not currently supported. Submit a pull request if interested.
 
 ### Algorithm
 
@@ -211,6 +241,13 @@ In addition the following two are almost always present on Adam optimizer deriva
 - **`lr`** - Learning rate from wrapped optimizer
 - **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
 
+### Distributed Support
+
+The primary issues is whether or not samples are independent. 
+
+- **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list
+- **`sharded`**: This is still just one batch. We average the metric to be safe, and just consider it one sample.
+
 ### Algorithm
 
 On each step call, the user provides a metric value (typically loss). The system accumulates these metric samples and performs a two-tailed t-test to compute the confidence interval at the specified `confidence_level`. The step decision is taken when the confidence interval meets the `percent_error_threshold` criterion, indicating the metric estimate has sufficiently low variance. The system will force a step when `num_draws >= max_batch_draws` regardless of confidence interval width.
@@ -264,6 +301,13 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 - **`lr`** - Learning rate from wrapped optimizer
 - **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Distributed Support
+
+The primary issues is whether or not samples are independent. 
+
+- **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list
+- **`sharded`**: This is still just one batch. We average the metric to be safe, and just consider it one sample.
 
 ### Algorithm
 
