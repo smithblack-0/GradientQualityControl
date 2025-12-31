@@ -44,7 +44,7 @@ Then the flagship algorithm shown in the Getting Started guide is likely an exce
 * Moving towards a large scale production capability.
 * Going to use capacity that has some replication of parameters and some sharding.
 
-Then you are currently unsupported and would have to implement your own algorithm. Practitioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Base Object API](base_object_api.md) as well.
+Then you are currently unsupported and would have to implement your own algorithm or use multiple optimizers. Practitioners should consult the [User Guide](user_guide.md) then the [Wrapper Factories API Guide](api_guide.md) if needed. Users performing advanced actions may consult the [Base Object API](base_object_api.md) as well.
 
 ### Researchers
 
