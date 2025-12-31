@@ -62,3 +62,56 @@ def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
 ```
 
 **Returns:** True if optimizer stepped, False if still accumulating
+
+---
+
+## OptimizerWrapperGNTS
+
+**Gradient Norm Threshold Scheduler**
+
+Production algorithm for adaptive batch sizing based on gradient quality. Accumulates gradients until their magnitude falls below a configurable threshold, providing automatic batch size tuning and gradient noise reduction.
+
+### Constructor
+
+The constructor wraps an optimizer, and asks for exactly as much additional information as is needed for the algorithm to run. Specifically, it asks for
+
+```python
+def __init__(
+    self,
+    optimizer: torch.optim.Optimizer,
+    max_batch_draws: int = 64
+)
+```
+
+where
+
+**Parameters:**
+- `optimizer` - Configured PyTorch optimizer to wrap
+- `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+
+### Schedule Targets
+
+The following primary ScheduleAnything target is added
+
+- **`gradient_norm_threshold`** - Target gradient norm threshold injected by wrapper. Wrapper accumulates until gradient norm falls at or below this threshold.
+
+In addition the following two are almost always present on Adam optimizer derivatives
+
+- **`lr`** - Learning rate from wrapped optimizer
+- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+
+### Algorithm
+
+On each step call, the system computes the current gradient norm (divided by num_draws to get the mean) and checks whether
+
+```mean_gradient_norm <= gradient_norm_threshold```
+
+When this condition is satisfied for all parameter groups, the step decision is taken. As accumulation continues, the mean gradient norm typically decreases, making it progressively more likely to meet the threshold. The system will force a step when `num_draws >= max_batch_draws` regardless of gradient norm.
+
+### Step
+
+```python
+def step(self, closure: Optional[Callable[[], Any]] = None) -> bool
+```
+
+**Returns:** True if optimizer stepped, False if still accumulating
