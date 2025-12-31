@@ -159,14 +159,17 @@ def step(self, closure=None):
 ### statistics
 
 ```python
-def statistics(self) -> Dict[str, Any]
+def statistics(self, aggregate_behavior: Literal["mean", "max", "min"] = "mean") -> Dict[str, Any]
 ```
 
 The statistics method provides complete visibility into the wrapper's internal state and the underlying optimizer's configuration. Call this when you need to log detailed training metrics, debug unexpected behavior, analyze algorithm performance, or export comprehensive training data. It returns everything - all wrapper state (both vital and optional), all optimizer hyperparameters, and all counters. This is the "full dump" for comprehensive monitoring, analysis, or debugging.
 
-The method pulls from two sources: wrapper state (counters, algorithm parameters, cached metrics) and optimizer parameter groups (lr, weight decay, momentum, etc.). For optimizers with multiple parameter groups where a value differs across groups (e.g., different learning rates), the method aggregates by computing the mean and adds a `*` suffix to the key. This gives you a single number to monitor while signaling heterogeneity. If all groups have the same value, it returns that value without suffix.
+The method pulls from two sources: wrapper state (counters, algorithm parameters, cached metrics) and optimizer parameter groups (lr, weight decay, momentum, etc.). For optimizers with multiple parameter groups where a value differs across groups (e.g., different learning rates), the `aggregate_behavior` parameter controls aggregation method. The aggregated value gets a `*` suffix added to the key to signal heterogeneity. If all groups have the same value, it returns that value without suffix.
 
 This method is read-only and deterministic - calling it never modifies state, and the same state always produces the same output. You can call it as many times as needed, even before the first step.
+
+**Parameters:**
+- `aggregate_behavior` (Literal["mean", "max", "min"]) - How to aggregate multi-group optimizer parameters. Default: "mean".
 
 **Returns:**
 - `Dict[str, Any]` - Complete statistics dictionary
@@ -176,7 +179,7 @@ This method is read-only and deterministic - calling it never modifies state, an
 - All float-valued keys from `optimizer.param_groups`
 - Multi-group parameters:
   - Same value across groups: `"lr": 0.001`
-  - Different values: `"lr*": 0.0015` (mean, with `*` suffix)
+  - Different values: `"lr*": 0.0015` (aggregated with `*` suffix)
 
 **Properties:**
 - Read-only - never modifies state
@@ -186,6 +189,7 @@ This method is read-only and deterministic - calling it never modifies state, an
 
 **Example:**
 ```python
+stats = wrapper.statistics()  # mean aggregation by default
 {
     "num_batches": 150,
     "num_steps": 25,
@@ -195,6 +199,9 @@ This method is read-only and deterministic - calling it never modifies state, an
     "lr": 0.001,  # same across groups
     "weight_decay*": 0.0055  # mean of different values
 }
+
+stats_max = wrapper.statistics(aggregate_behavior="max")
+# weight_decay* would be max instead of mean
 ```
 
 ---
@@ -202,14 +209,17 @@ This method is read-only and deterministic - calling it never modifies state, an
 ### vital_statistics
 
 ```python
-def vital_statistics(self) -> Dict[str, Any]
+def vital_statistics(self, aggregate_behavior: Literal["mean", "max", "min"] = "mean") -> Dict[str, Any]
 ```
 
 The vital_statistics method returns a curated subset of statistics designed for real-time monitoring during training. Call this to populate progress bars (tqdm), training dashboards, or logging systems where you need to track key health metrics without overwhelming the display. It's the "health dashboard" - just the metrics that matter for monitoring training progress and diagnosing problems at a glance.
 
-Unlike `statistics()` which returns everything, this method filters to only vital metrics - those marked with `flag="vital"` when stored via `set_state()`. Subclasses decide what's vital: counters like num_batches and num_draws are always vital, and algorithm-specific metrics like gradient norms or quality thresholds should be marked vital if they're key performance indicators. The method also includes optimizer hyperparameters (lr, weight decay, etc.) since these are essential for understanding training behavior, especially with schedulers. Same aggregation rules apply: `*` suffix with mean for multi-group parameters that differ.
+Unlike `statistics()` which returns everything, this method filters to only vital metrics - those marked with `flag="vital"` when stored via `set_state()`. Subclasses decide what's vital: counters like num_batches and num_draws are always vital, and algorithm-specific metrics like gradient norms or quality thresholds should be marked vital if they're key performance indicators. The method also includes optimizer hyperparameters (lr, weight decay, etc.) since these are essential for understanding training behavior, especially with schedulers. The `aggregate_behavior` parameter controls how multi-group optimizer parameters are aggregated, with a `*` suffix for heterogeneous values.
 
 This method is read-only, deterministic, and safe to call frequently. It's a strict subset of `statistics()` - every key in vital_statistics also appears in statistics.
+
+**Parameters:**
+- `aggregate_behavior` (Literal["mean", "max", "min"]) - How to aggregate multi-group optimizer parameters. Default: "mean".
 
 **Returns:**
 - `Dict[str, Any]` - Curated vital statistics dictionary
@@ -401,25 +411,33 @@ def step(self, closure=None):
 ### get_state (Unified Access)
 
 ```python
-def get_state(self, name: str) -> Any
+def get_state(self, name: str, aggregate_lists: Optional[Literal["mean", "max", "min"]] = "mean") -> Any
 ```
 
 **Unified interface for both wrapper and optimizer state.**
 
 The get_state method retrieves state from either the wrapper or the underlying optimizer through a single unified interface. Call this in your `step()` implementation to access algorithm parameters, counters, cached metrics, or optimizer hyperparameters. Instead of checking "is this in wrapper_states or optimizer.param_groups?", you just call `get_state()` and it searches both.
 
-This unified access pattern is particularly useful for subclass implementations that need to examine both wrapper state (like gradient norms or batch counts) and optimizer state (like current learning rate or weight decay). The method searches wrapper_states first, then falls back to optimizer.param_groups. For multi-group optimizers where a parameter differs across groups, it returns the mean by default, giving you a single number to work with in your decision logic.
+This unified access pattern is particularly useful for subclass implementations that need to examine both wrapper state (like gradient norms or batch counts) and optimizer state (like current learning rate or weight decay). The method searches wrapper_states first, then falls back to optimizer.param_groups. For multi-group optimizers where a parameter differs across groups, the `aggregate_lists` parameter controls how to aggregate: return the mean (default), max, min, or the raw list of values.
 
-The method returns just the value, not metadata. For wrapper state, it strips the flag and returns the value. For optimizer state, it aggregates across parameter groups if needed. If the name isn't found in either location, it crashes with a clear error.
+The method returns just the value, not metadata. For wrapper state, it strips the flag and returns the value. For optimizer state from multi-group optimizers, it aggregates according to `aggregate_lists`. If the name isn't found in either location, it crashes with a clear error.
+
+**Parameters:**
+- `name` (str) - State variable name to retrieve
+- `aggregate_lists` (Optional[Literal["mean", "max", "min"]]) - How to aggregate multi-group optimizer parameters. Default: "mean". Pass None to return the raw list.
 
 **Returns:**
-- `Any` - The state value (just the value, not metadata)
+- `Any` - The state value (just the value, not metadata). For multi-group params, returns aggregated value or list.
 
 **Contract - Search Order:**
-1. If `name` in `wrapper_states`: return that value
+1. If `name` in `wrapper_states`: return that value (ignore aggregate_lists)
 2. Else if `name` in `optimizer.param_groups`:
    - All groups same value → return that value
-   - Groups have different values → return mean
+   - Groups have different values:
+     - `aggregate_lists="mean"` → return mean
+     - `aggregate_lists="max"` → return max
+     - `aggregate_lists="min"` → return min
+     - `aggregate_lists=None` → return list of values
 3. Else: throw error (not found)
 
 **Purpose:**
@@ -428,13 +446,16 @@ Transparent access to both wrapper state (`num_batches`, custom thresholds) and 
 **Example:**
 ```python
 threshold = wrapper.get_state("gradient_norm_threshold")  # from wrapper_states
-lr = wrapper.get_state("lr")  # from optimizer.param_groups
-batches = wrapper.get_state("num_batches")  # from wrapper_states (vital)
+lr = wrapper.get_state("lr")  # from optimizer.param_groups, mean if differs
+lr_max = wrapper.get_state("lr", aggregate_lists="max")  # max across groups
+lr_list = wrapper.get_state("lr", aggregate_lists=None)  # raw list
 
 # In multi-group optimizer with different lrs:
 # param_groups[0]['lr'] = 0.001
 # param_groups[1]['lr'] = 0.01
 # get_state("lr") returns 0.0055 (mean)
+# get_state("lr", "max") returns 0.01
+# get_state("lr", None) returns [0.001, 0.01]
 ```
 
 ---
@@ -534,23 +555,6 @@ Properties that **must always hold:**
 9. **Namespace separation** - `set_state()` cannot use optimizer param_group names
 10. **Immutable flags** - Vital/optional status cannot change once set
 11. **Anytime statistics** - `statistics()` and `vital_statistics()` work before first step
-
----
-
-### Mathematical Model
-
-Let $b_i$ = gradients from batch $i$, $n$ = `num_draws`, $\theta$ = model parameters.
-
-**Accumulation:**
-$$g_{accumulated} = \sum_{i=1}^{n} b_i$$
-
-**Averaging (in `_take_optimizer_step()`):**
-$$g_{mean} = \frac{1}{n} \sum_{i=1}^{n} b_i$$
-
-**Gradient Norm (L2):**
-$$\|g_{mean}\|_2 = \sqrt{\sum_{p \in \theta} \|g_{mean}[p]\|^2}$$
-
-Stored as `last_grad_norm`, accessible via `get_state("last_grad_norm")`.
 
 ---
 
