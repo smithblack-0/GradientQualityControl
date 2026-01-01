@@ -14,6 +14,8 @@ This enables architecture to emerge from constraints rather than guesswork. Trad
 
 ### Workflow
 
+The workflow exists to enforce discipline that prevents mixing abstraction levels. Without a specific process, developers naturally discover dependencies during implementation when switching contexts is expensive, leading to the problems DDD avoids. The workflow ensures progressive unfolding happens correctly by defining exactly when and how to handle dependencies, fork contracts, and maintain consistency.
+
 The workflow only functions when unrolling from a design foundation. You begin with design requirements and the overall story contracted at the big picture level - the invariants, requirements, utilities, and directions for the project. From this foundation, you progressively unroll detail by slicing off more levels of abstraction.
 
 The development cycle operates by progressive unrolling. As you work on tests at one abstraction level, you realize "I need to inject something doing X, Y, Z" which spawns an API requirement. This API then gets documented as a contract, creating a fork that can be filled later or by others. The sequence is always API emerges from needs, then gets formalized in documentation. When you identify a needed dependency interface during testing, you send it to the documentation role to formalize as a new contract while continuing work at your current abstraction level. Then you implement code to pass tests (a mechanical, bounded task) and implement integration tests to verify pieces work together.
