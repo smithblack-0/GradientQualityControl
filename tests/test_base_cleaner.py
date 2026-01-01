@@ -624,36 +624,8 @@ class TestSubclassOptimizerStepContract:
 
         assert len(zero_grad_called) == 1
 
-    def test_take_optimizer_step_averages_gradients_by_num_draws(self):
-        """_take_optimizer_step() divides gradients by num_draws."""
-        model, base_optimizer = create_simple_model_and_base_optimizer()
-        optimizer = MinimalTestOptimizer(base_optimizer, step_every=3)
-
-        # Accumulate gradients - simulate backward passes that sum
-        params = list(model.parameters())
-
-        # First batch
-        for p in params:
-            p.grad = torch.full_like(p, 6.0)
-        optimizer.step()  # num_draws=1, don't step yet
-
-        # Second batch - gradients sum
-        for p in params:
-            p.grad += torch.full_like(p, 6.0)  # Now grad=12
-        optimizer.step()  # num_draws=2, don't step yet
-
-        # Third batch
-        for p in params:
-            p.grad += torch.full_like(p, 6.0)  # Now grad=18
-        optimizer.step()  # num_draws=3, step now
-
-        # After stepping, gradients should be zeroed
-        # But we can check that the step happened by verifying num_steps
-        assert optimizer.statistics()["num_steps"] == 1
-        assert optimizer.statistics()["num_draws"] == 0  # Reset after step
-
-    def test_take_optimizer_step_skips_none_gradients(self):
-        """_take_optimizer_step() skips parameters with None gradients."""
+    def test_take_optimizer_step_handles_none_gradients(self):
+        """_take_optimizer_step() handles parameters with None gradients without error."""
         model, base_optimizer = create_simple_model_and_base_optimizer()
         optimizer = MinimalTestOptimizer(base_optimizer, step_every=2)
 

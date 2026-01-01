@@ -446,29 +446,31 @@ Subclasses must call this exactly once per batch, typically as the first line of
 
 ### _take_optimizer_step (Protected)
 
-**Purpose:**
-Ensures gradient averaging invariant maintained consistently. Subclasses **must** use this to step - bypassing it violates the contract and produces incorrect training behavior.
+**For subclasses - required to use.**
 
-The _take_optimizer_step method encapsulates the entire gradient averaging and optimizer stepping process. Call this in your `step()` implementation when your decision logic determines it's time to step the optimizer. This is the only way to step the optimizer - directly calling `self.optimizer.step()` bypasses gradient averaging and breaks the wrapper's contract.
-
-Why must subclasses use this? Gradient averaging guarantee. PyTorch's `.backward()` sums gradients across multiple backward passes. If you've accumulated N batches (num_draws = N), each parameter's `.grad` contains the sum of N batches' gradients. This method divides all gradients by N to convert sum → mean, then steps the optimizer with the averaged gradients. After stepping, it zeros gradients for the next accumulation cycle, increments counters, and caches the gradient norm for statistics.
-
-The method executes a precise sequence: average gradients, compute L2 norm, step optimizer, zero gradients, update counters and state. This sequence ensures the gradient averaging invariant holds consistently. If subclasses step the optimizer directly, they skip averaging and the optimizer sees summed gradients instead of means - wrong effective batch size, broken training dynamics. The method also throws if num_draws is 0 (no batches accumulated yet), preventing invalid steps.
-
+Call this in your `step()` implementation when your decision logic determines it's time to step the optimizer. This is the **only** way to step - directly calling `self.optimizer.step()` bypasses required processing and violates the contract.
 
 ```python
 def _take_optimizer_step(self) -> None
 ```
 
-**Contract**
-1. Average gradients: multiply all by `1 / num_draws`
-2. Compute L2 gradient norm across all parameters; store in `last_grad_norm`
-3. Step wrapped optimizer with averaged gradients
-4. Zero all gradients
-5. Update properties: store `num_draws` in `last_num_draws`, increment `num_steps`, reset `num_draws` to 0
+**When to call:**
+- When your control algorithm decides conditions warrant stepping the optimizer
+- After at least one `_batch_received()` call (num_draws > 0)
+
+**Observable effects after calling:**
+- `num_steps` increments by 1
+- `num_draws` resets to 0
+- `last_num_draws` set to previous `num_draws` value
+- `last_grad_norm` updated with gradient information
+- Base optimizer stepped (parameters updated)
+- All gradients zeroed (ready for next accumulation)
 
 **Throws:**
-- If `num_draws == 0` (cannot step without accumulated batches)
+- `RuntimeError` if `num_draws == 0` (must accumulate at least one batch before stepping)
+
+**Critical rule:**
+Never call `self.optimizer.step()` directly. Always use `_take_optimizer_step()`. Bypassing this method breaks gradient accumulation and produces incorrect training.
 
 ## Invariants
 
