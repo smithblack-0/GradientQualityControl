@@ -14,7 +14,7 @@ This enables architecture to emerge from constraints rather than guesswork. Trad
 
 ### Workflow
 
-The workflow exists to enforce discipline that prevents mixing abstraction levels. Without a specific process, developers naturally discover dependencies during implementation when switching contexts is expensive, leading to the problems DDD avoids. The workflow ensures progressive unfolding happens correctly by defining exactly when and how to handle dependencies, fork contracts, and maintain consistency.
+DDD requires a specific workflow to realize its benefits. A good workflow should allow working at one abstraction level at a time, naturally identify when sub-abstractions need fleshing out further, cleanly split up roles between designers, auditors, and implementers, and naturally slice out levels of abstraction to produce clean and easily refactored code. The DDD workflow achieves these properties through progressive unrolling from a design foundation.
 
 The workflow only functions when unrolling from a design foundation. You begin with design requirements and the overall story contracted at the big picture level - the invariants, requirements, utilities, and directions for the project. From this foundation, you progressively unroll detail by slicing off more levels of abstraction.
 
