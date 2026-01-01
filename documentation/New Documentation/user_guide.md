@@ -91,17 +91,18 @@ For more details on the actual objects, consult [Optimizer Wrapper API](optimize
 
 ## Scheduling Factories
 
-Using the wrappers directly requires attaching generalized schedules, usually through ScheduleAnything. However, each varient of wrapper has researched default factories available as well. These factories mean, when initializing through them, one 
+Using the wrappers directly requires attaching generalized schedules, usually through ScheduleAnything. However, each varient of wrapper has researched default factories available as well. These factories will set up the schedules as well, making them considerably easier for the lay user to use, but make some assumptions about optimal schedule behavior in exchange. Anything marked as "conventional_lr" is a varient that schedules the learning rate using cosine annealing. All factories are built with AdamW in mind, but will skip binding schedules that do not have a parameter to bind to while issuing a warning.
 
-
-The set of wrapper factories exist to make it a bit easier to bind up the optimizer wrappers to the need schedules or schedule possibilities in a convenient to use package. Some of these are production-ready algorithms as well. The set of wrapper factories are
-
-* make_sbc_with_polynomial_schedule: 
-* make_gns_with_cosine_annealing_schedule: Allows the scheduling of the gradient noise scale response quality with cosine annealing and thus adjusted the batch size. Learning rate is by cosine annealing, and the noise scale also follows such a schedule
-* make_gns_default: The default schedule. This inverse warms up the noise tolerance then it just sticks there; learning rate follows a cosine schedule. 
-* make_gnr_with_cosine_annealing_schedule_and_lr_to_constant: The gradient norm rescaler class just rescales the gradient norms to be a certain size then immediately steps. This implements a schedule that is bound to that. Learning rate warms up to constant.
-* * make_gnr_with_cosine_annealing_schedule_and_lr_cosine_anneals: The gradient norm rescaler class just rescales the gradient norms to be a certain size then immediately steps. This implements a schedule that is bound to that. Learning rate anneals too according to the same schedule
-* make_gnts_with_cosine_annealing_schedule: Learning rate warms up to constant, threshold inverse warmup to starting value, then cosine annealing to ending value. Weight decay warms up to completely on, then cosine anneals to zero over timesteps.
+| Name                                                     | Link                                                                          | Purpose                                                                                                         |
+|----------------------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| make_sbc_with_polynomial_schedule                        | [link](api_guide.md#make_sbc_with_polynomial_schedule)                        | Schedule the batch size instead of the learnign rate                                                            |
+| make_sbc_with_polynomial_schedule_conventional_lr        | [link](api_guide.md#make_sbc_with_polynomial_schedule_conventional_lr)        | Like last one, but includes a cosine annealing learning rate schedule and no weight decay scheduling.           |
+| **make_gnts_with_cosine_annealing_schedule**             | [link](api_guide.md#make_gnts_with_cosine_annealing_schedule)                 | Adaptive and reactive batch resizing using gradient norms; best algorithm                                       |
+| make_gnts_with_cosine_annealing_schedule_conventional_lr | [link](api_guide.md#make_gnts_with_cosine_annealing_schedule_conventional_lr) | Like the primary algorithm, except we retain cosine annealing of learning rate and do not schedule weight decay |
+|make_gnr_with_cosine_annealing_schedule| [link](api_guide.md#make_gnr_with_cosine_annealing_schedule)                  | Rescales the gradients to match a target, then cosine anneals that target|
+|make_gnr_with_cosine_annealing_schedule_conventional_lr| [link](api_guide.md#make_gnr_with_cosine_annealing_schedule_conventional_lr)  | Eliminates the weight decay scheduling in favor of a conventional cosine annealing learning rate schedule|
+|make_gns_with_cosine_annealing_schedule| [link](api_guide.md#make_gns_with_cosine_annealing_schedule)| Annealed threshold for better performance of the gradient noise scale|
+|make_gns_default| [link](api_guide.md#make_gns_default)| Warmup to threshold, then just runs.|
 
 For more details consult [Wrapper Factories API Guide](api_guide.md).
 

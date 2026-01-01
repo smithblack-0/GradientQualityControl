@@ -61,7 +61,13 @@ Use when you want direct control over batch size scheduling with a polynomial cu
 
 ## make_gnts_with_cosine_annealing_schedule
 
-Creates an OptimizerWrapperGNTS with cosine annealing schedules.
+The flagship production utility as of this time. 
+
+This implements a reactive system where the gradient quality is increased until the length of the gradient norm - which gets shorter as quality increases - is below a scheduled threshold. Then we step. Since this has the effect of directly regulating the length of the gradients, we omit the learning rate schedule.
+
+Learning rate warms up to constant then just stays on, gradient norm threshold undergoes inverse warmup to starting value, then cosine anneals to ending value. Weight decay warms up to completely on, then cosine anneals to zero over timesteps, since the decay normally produced by learning rate is gone.
+
+Creates an OptimizerWrapperGNTS with LRSchedules implementing these processes transparently for downstream objects.
 
 ### Signature
 
@@ -73,7 +79,7 @@ def make_gnts_with_cosine_annealing_schedule(
     total_steps: int,
     warmup_steps: int,
     max_batch_draws: int = 64
-) -> Tuple[OptimizerWrapperGNTS, ScheduleAnything]
+) -> Tuple[OptimizerWrapperGNTS, LRScheduler]
 ```
 
 ### Parameters
@@ -101,14 +107,15 @@ The flagship production algorithm. Use for adaptive batch sizing based on gradie
 
 ---
 
-## make_gnr_with_cosine_annealing_schedule_and_lr_to_constant
+## make_gnr_with_cosine_annealing_schedule
 
-Creates an OptimizerWrapperGNR with gradient norm annealing and constant learning rate.
+The gradient norm rescaler class rescales the gradient norms to be a threshold size then immediately steps. The threshold is in turn scheduled, and this process directly controls the gradient length, omitting the need for a learning rate schedule. Since weight decay still needs to reduce, it is scheduled to cosine annealing instead decaying to zero. All properties undergo a normal warmup.
 
+Creates an OptimizerWrapperGNR with gradient norm rescaling and constant learning rate.
 ### Signature
 
 ```python
-def make_gnr_with_cosine_annealing_schedule_and_lr_to_constant(
+def make_gnr_with_cosine_annealing_schedule(
     optimizer: torch.optim.Optimizer,
     initial_norm: float,
     final_norm: float,
@@ -187,6 +194,10 @@ Alternative GNR configuration where learning rate also anneals. Use when you wan
 
 ## make_gns_with_cosine_annealing_schedule
 
+Allows the scheduling of the gradient noise scale response quality with cosine annealing and thus adjusted the batch size.
+
+The threshold is started high, using an inverse warmup, then comes down to the runtime value in inverse warmup. Then, it cosine anneals down to the final tolerance. This thus possesses an inverse response. A standard cosine annealing case, which anneals down to zero, is also attached. 
+
 Creates an OptimizerWrapperGNS with cosine annealing noise tolerance.
 
 ### Signature
@@ -198,6 +209,7 @@ def make_gns_with_cosine_annealing_schedule(
     final_tolerance: float,
     total_steps: int,
     warmup_steps: int,
+    warmup_multiplier: int = 10,
     max_batch_draws: int = 64
 ) -> Tuple[OptimizerWrapperGNS, ScheduleAnything]
 ```
