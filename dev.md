@@ -2,17 +2,38 @@
 
 ## Document-Driven Development (DDD)
 
-This project uses documentation driven development
+This project uses documentation driven development.
 
-Document-Driven Development is a **contract-first development, outside-in methodology** where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), implementing tests while filling out the dependency public specification, then implement code to conform to those specifications. This is a  Contract-first development, project-oriented workflow (not lightweight - produces substantial documentation), but with extremely high consistency and ease of refactoring, particularly with llm assistance.
+### Big Picture
 
-### Core Workflow
+Document-Driven Development is a **contract-first development, outside-in methodology** where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), implementing tests while filling out the dependency public specification, then implement code to conform to those specifications.
 
-```
-Documentation (Design) → Tests (Validation) → Implementation (Execution)
-```
+**Core mechanism:** Work at only one abstraction level at a time, pushing lower-level concerns into future bounded contracts that can be filled later or by others.
 
-**The key inversion:** Documentation defines what must be true, tests verify those properties hold, and implementation is constrained to satisfy both. Code cannot deviate from the contract without failing tests.
+**Why this works:**
+- **Documentation is cheap to refactor** - Architecture emerges through progressive refinement during documentation phase, not during expensive implementation phase
+- **Tests drive interface discovery** - APIs emerge when writing tests (not designed upfront), documentation formalizes them as contracts
+- **Implementation becomes mechanical** - All dependencies identified during planning, implementation is just "fill this contract to pass tests"
+- **LLM-friendly** - Modern LLMs can implement to Natural Language Formal Specifications, enabling true parallel development (humans design, LLMs/juniors implement)
+
+**Key mechanism:** During testing you realize "I need something doing X, Y, Z" → Create interface → Test against it → Send back to documentation team to formalize → Continue at your abstraction level. **Documentation + Interfaces IS the specification.**
+
+**Taxonomical classification:** Contract-first development, project-oriented (produces substantial documentation mass). Excellent for building tools and libraries with stable requirements, poor fit for rapidly changing requirements or throwaway prototypes.
+
+### Workflow
+
+**The iterative loop:**
+
+1. **Document public behavior** - Write contract for the thing you're building (can be vague "does X somehow", just needs public API surface)
+2. **Write tests** - As you write tests, you realize "I need to inject something doing Y, Z" → APIs emerge here
+3. **FORK** - Send the needed dependency interface back to documentation role to flesh out as new contract
+4. **Implement code** - Write implementation to pass tests (mechanical, bounded)
+5. **Implement integration tests** - Verify the pieces work together
+6. **Loop back to step 2** - Continue with next piece
+
+**Key insight:** You don't write stub APIs first - they **emerge during test writing** when you realize what you need to inject. Testing phase discovers the necessary interfaces, documentation phase formalizes them as contracts.
+
+**The inversion:** Tests drive interface discovery, documentation captures interfaces as contracts, implementation fills contracts. Traditional development discovers interfaces during implementation (too late, causes refactoring).
 
 ### The Core Mechanism: Single-Level Abstraction
 
