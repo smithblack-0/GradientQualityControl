@@ -12,10 +12,10 @@ Convenience factory functions for creating pre-configured optimizer wrapper and 
 
 ## make_sbc_with_polynomial_schedule
 
-Allows following a polynomial curve from initial batch size to final batch size with an included warmup; usable to schedule the batch size directly. Learning rate is warmed up to a constant, batch size is by polynomial schedule, and weight decay is by cosine annealing to account for removed learninig rate schedule. Generally, go from small to large batches. 
+Allows following a polynomial curve from initial batch size to final batch size with an included warmup; usable to schedule the batch size directly. Learning rate is warmed up to a constant, batch size warms up then follows a polynomial schedule, and weight decay warms up then executes cosine annealing to zero.
 
-
-
+This is largely our interpretation of Smith's "Don't Decay the Learning Rate, Increase the Batch Size
+". Do not expect an exact algorithm match, however, as we did not recheck the paper before implementing. Since the learning rate no longer decreases, but the regularization should, the weight decay is scheduled instead.
 
 ### Signature
 
@@ -29,7 +29,7 @@ def make_sbc_with_polynomial_schedule(
     warmup_steps: int,
     polynomial_power: float = 2.0,
     max_batch_draws: int = 64
-) -> Tuple[OptimizerWrapperSBC, ScheduleAnything]
+) -> Tuple[OptimizerWrapperSBC, LRSchedule]:
 ```
 
 ### Parameters

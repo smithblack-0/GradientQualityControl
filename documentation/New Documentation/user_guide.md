@@ -91,9 +91,8 @@ For more details on the actual objects, consult [Optimizer Wrapper API](optimize
 
 ## Scheduling Factories
 
-Using the wrappers directly requires attaching generalized schedules, usually through ScheduleAnything. However, each varient of wrapper has researched default factories available as well. We cover them.
+Using the wrappers directly requires attaching generalized schedules, usually through ScheduleAnything. However, each varient of wrapper has researched default factories available as well. These factories mean, when initializing through them, one 
 
-## Wrapper Factories
 
 The set of wrapper factories exist to make it a bit easier to bind up the optimizer wrappers to the need schedules or schedule possibilities in a convenient to use package. Some of these are production-ready algorithms as well. The set of wrapper factories are
 

@@ -113,7 +113,7 @@ Under the hood, this is implementing a ScheduleAnything schedule that sets the "
 
 ### Custom Parameters
 
-Setting threshold values explicitly, observe the following:
+Sometimes the gradient norms are so large that the system crawls during warmup, despite being stable later, or sometimes you need a different schedule. These issues are correctable, but optional.
 
 ```python
 from gradient_quality_control import OptimizerWrapperGNTS, make_gnts_with_cosine_annealing_schedule
@@ -124,9 +124,9 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 optimizer, schedule = make_gnts_with_cosine_annealing_schedule(optimizer,
                                                              num_warmup_steps = 500,
                                                              num_training_steps = 10000,
-                                                             norm_warmup_target=0.95, # Default value
-                                                             norm_anneal_target=0.25, # Default vlaue
-                                                             initial_warmup_multiplier = 10.0 # Default value.
+                                                             norm_warmup_target=1.0, # 1.0 instead
+                                                             norm_anneal_target=0.20, # A bit lower
+                                                             initial_warmup_multiplier = 100.0 # Much higher than normal.
                                                              )
 for inputs, labels in train_loader:
     
@@ -153,8 +153,6 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 optimizer, schedule = make_gnts_with_cosine_annealing_schedule(optimizer,
                                                              num_warmup_steps = 500,
                                                              num_training_steps = 10000,
-                                                             norm_warmup_target=0.95,
-                                                             norm_anneal_target=0.25,
                                                              )
 
 pbar = tqdm(train_loader, desc="Training")
@@ -175,7 +173,7 @@ for inputs, labels in train_loader:
 
 ### Distributed Training
 
-For distributed training with DDP or FSDP, explicitly set the `distributed_mode` parameter:
+For distributed training with DDP, FSDP, or other mechanisms you must tell the system what kind distribution is occurring. Are you replicating the model? Or sharding it?
 
 ```python
 from gradient_quality_control import make_gnts_with_cosine_annealing_schedule
@@ -198,8 +196,4 @@ optimizer, schedule = make_gnts_with_cosine_annealing_schedule(
 )
 ```
 
-The rest of the training loop remains identical to the basic usage example.
-
----
-
-Consider consulting the production guide if needed, or the api guide, if more information on how to control the system is requested. Overall, however, you can think of the norm threshold as a quality demand. Lower threshold requests higher quality gradients.
+In cases like MoEs where some parts are replicated and some parts are sharded, you will end up needing to use separate optimizers for each case unfortunately. The rest of the training loop remains identical to the basic usage example.
