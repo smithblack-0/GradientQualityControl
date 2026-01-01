@@ -1,11 +1,11 @@
-# Optimizer Wrapper Base clase
+# Optimizer Wrapper Base class
 
 ## Navigation
 
 - **[User Guide](user_guide.md)** - Usage patterns and concepts
 - **[Wrapper Factories API Guide](api_guide.md)** - Convenience factory functions
 - **[Research Guide](research_guide.md)** - Research background and theory
-- **[README](../README.md)** - Installation and quick start
+- **[README](New Readme.md)** - Installation and quick start
 
 ---
 
@@ -59,7 +59,7 @@ The following fields are available, with indicated behavior, on the main class
 - **`step`**: Transparently duck-types exactly as before. 
 - **`zero_grad`**: Now throws. The wrapper resets grads instead.
 - **`statistics`**: Returns complete dictionary of features governing internal behavior.
-- **`vital_statistics`**: Returns dictionary of things to display or log that are vital performance indicators; subclasses must judge and mark whether somethign is vital.
+- **`vital_statistics`**: Returns dictionary of things to display or log that are vital performance indicators; subclasses must judge and mark whether something is vital.
 - **`state_dict`**: Gets the state dict, storing the wrapped optimizer and the state dict from the layer.
 - **`load_state_dict`**: Losslessly resumes from a state dict.
 

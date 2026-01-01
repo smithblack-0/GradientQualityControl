@@ -167,7 +167,7 @@ for inputs, labels in train_loader:
     # Optimization. IMPORTANT! No zero grad anymore, optimizer now takes care of that.
     optimizer.step()
     schedule.step()
-    vital_statistics = optimizer.get_vital_statistics()
+    vital_statistics = optimizer.vital_statistics()
     pbar.set_postfix(vital_statistics)
 ```
 

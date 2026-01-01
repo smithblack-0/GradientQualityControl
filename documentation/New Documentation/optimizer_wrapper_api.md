@@ -273,7 +273,7 @@ def step(self, metric: float) -> bool
 
 Research control inspired by McCandlish et al.'s gradient noise scale theory for adaptive batch sizing. Largely a failed mechanism that did not correctly optimize performance, as it did not perform well under Adam.
 
-It exposes "lr" and "noise_tolerance"; noise tolerance is literally what the noise to signa ratio we are willing to tolerate. It delays taking steps until the GNS is below a threshold weighted by the cost of processing one more batch. 
+It exposes "lr" and "noise_tolerance"; noise tolerance is literally what the noise to signal ratio we are willing to tolerate. It delays taking steps until the GNS is below a threshold weighted by the cost of processing one more batch. 
 
 ### Constructor
 
@@ -308,7 +308,7 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 ### Distributed Support
 
-The primary issues is whether or not samples are independent. 
+The primary issue is whether or not samples are independent. 
 
 - **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list on all devices. 
 - **`sharded`**: This is still just one batch. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 

@@ -79,7 +79,7 @@ Functions which users may wish to know about, and which all subclasses are contr
 
 The control optimizer wrappers which are available are enumerated as follows. ScheduleAnything binding targets are listed as well as general usage principles and motivation for the objects. It should be kept in mind going forward that when multiple batches are drawn before stepping, their gradients are meaned and thus on average get shorter. *Note that using these objects directly requires attaching ScheduleAnything schedules.* As such, it is usually recommended to use the factories in the following section unless you need custom behavior.
 
-| Full Name (abreviation)          |   Object Name      |   Link   | Purpose                                                                      |
+| Full Name (abbreviation)          |   Object Name      |   Link   | Purpose                                                                      |
 |----------------------------------|--------------------|----------|------------------------------------------------------------------------------|
 | Scheduled Batch Controller (SBC) | OptimizerWrapperSBC|[SBC](optimizer_wrapper_api.md#OptimizerWrapperSBC)| Schedule a logical batch size in constant physical batch size                |
 | Gradient Norm Rescaler (GNR)     | OptimizerWrapperGNR| [GNR](optimizer_wrapper_api.md#OptimizerWrapperGNR)| Always step; Rescale gradient norm to scheduled length                       |
