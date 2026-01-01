@@ -196,4 +196,4 @@ optimizer, schedule = make_gnts_with_cosine_annealing_schedule(
 )
 ```
 
-In cases like MoEs where some parts are replicated and some parts are sharded, you will end up needing to use separate optimizers for each case unfortunately. The rest of the training loop remains identical to the basic usage example.
+In cases like MoEs where some parts are replicated and some parts are sharded, you will end up needing to use separate optimizers stepping the replicated and sharded parameters separately so the system knows the right reduction form to use. The rest of the training loop remains identical to the basic usage example.
