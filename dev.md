@@ -1,24 +1,10 @@
-# Things I need before release
-
-* Installable Package: pip install gradient-quality-control works
-* License: MIT probably.
-* Documentation Site: Document how to use it, what it does, a bit of theory behind it
-* Research Site: Document why it might be working, what is currently know, what anomalies have been observed. It currently could either be automatically tuning a set of hyperparameters at once, or actually lowering the noise flor and raising convergence.
-* API Site: Probably still read the docs. Automatically generated and pulled according to file structure.
-* Reproducible Benchmarks: We are making outlandish claims. We need ready-to-go colabs with pinned costs for reproduction. These need to be straightforward enough to be manually audited.
-* Collaboration Guidelines: I want to publish, anyone want to help? Can someone help run some of the experiments in hyperparamter-seek mode? Resources appreciated.
-* CI: Tests are shown passing.
-* Versioning/Stability process: If it is not in experimental, api changes will never invalidate existing code except if underlying libraries change.
-
----
-
 # Development Practices
 
 ## Document-Driven Development (DDD)
 
-Document-Driven Development is a **contract-first development methodology** where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), then implement code to conform to those specifications.
+This project uses documentation driven development
 
-**Taxonomical classification:** Contract-first development, project-oriented (not lightweight - produces substantial documentation).
+Document-Driven Development is a **contract-first development, outside-in methodology** where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), implementing tests while filling out the dependency public specification, then implement code to conform to those specifications. This is a  Contract-first development, project-oriented workflow (not lightweight - produces substantial documentation), but with extremely high consistency and ease of refactoring, particularly with llm assistance.
 
 ### Core Workflow
 

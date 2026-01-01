@@ -99,11 +99,11 @@ Using the wrappers directly requires attaching generalized schedules, usually th
 | make_sbc_with_polynomial_schedule_conventional_lr        | [link](api_guide.md#make_sbc_with_polynomial_schedule_conventional_lr)        | Like last one, but includes a cosine annealing learning rate schedule and no weight decay scheduling.           |
 | **make_gnts_with_cosine_annealing_schedule**             | [link](api_guide.md#make_gnts_with_cosine_annealing_schedule)                 | Adaptive and reactive batch resizing using gradient norms; best algorithm                                       |
 | make_gnts_with_cosine_annealing_schedule_conventional_lr | [link](api_guide.md#make_gnts_with_cosine_annealing_schedule_conventional_lr) | Like the primary algorithm, except we retain cosine annealing of learning rate and do not schedule weight decay |
-|make_gnr_with_cosine_annealing_schedule| [link](api_guide.md#make_gnr_with_cosine_annealing_schedule)                  | Rescales the gradients to match a target, then cosine anneals that target|
+|make_gnr_with_cosine_annealing_schedule| a[link](api_guide.md#make_gnr_with_cosine_annealing_schedule)                 | Rescales the gradients to match a target, then cosine anneals that target|
 |make_gnr_with_cosine_annealing_schedule_conventional_lr| [link](api_guide.md#make_gnr_with_cosine_annealing_schedule_conventional_lr)  | Eliminates the weight decay scheduling in favor of a conventional cosine annealing learning rate schedule|
-|make_gns_with_cosine_annealing_schedule| [link](api_guide.md#make_gns_with_cosine_annealing_schedule)| Annealed threshold for better performance of the gradient noise scale|
-|make_gns_default| [link](api_guide.md#make_gns_default)| Warmup to threshold, then just runs.|
-|make_mht_with_warmup_schedule| [link](api_guide.md#make_mht_with_warmup_schedule)| Adaptively control batch size by detecting loss variance|
+|make_gns_with_cosine_annealing_schedule| [link](api_guide.md#make_gns_with_cosine_annealing_schedule)                  | Annealed threshold for better performance of the gradient noise scale|
+|make_gns_default| [link](api_guide.md#make_gns_default)                                         | Warmup to threshold, then just runs.|
+|make_mht_with_warmup_schedule| [link](api_guide.md#make_mht_with_warmup_schedule)                            | Adaptively control batch size by detecting loss variance|
 
 For more details consult [Wrapper Factories API Guide](api_guide.md).
 
