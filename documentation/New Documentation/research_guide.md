@@ -4,12 +4,12 @@ This guide provides an overview on the lines of research which have been pursued
 
 ## Overview
 
-This research began as a 'what the hell, lets try it* effort to automate batch sizing that produced an artifact that suggests automatic batch size tuning may not be impossible and may produce significant gains. More importantly, it was speculated it could significantly accelerate small lab research by automating this form of hyperparameter probing.
+This research began as a 'let's try it' effort to automate batch sizing that produced an artifact that suggests automatic batch size tuning may not be impossible and may produce significant gains. More importantly, it was speculated it could significantly accelerate small lab research by automating this form of hyperparameter probing.
 
 The research is roughly divided into three "generations"
 
-1) **Generation 1**: The initial line of inquery, which surfaces the Metric Hypothesis Test formulation. Seeing a perplexity jump of 40% was enough to get attention; figuring out that the system was fairly invarient over physical batch size changes illustrated additional potential. Code quality was a bit lower.
-2) **Generation 2**: Development of the SOAR research harness, and initial implementation of this library. More rugged exploration of possible confounding factors. Identification of 40% results as being indicative of misconfiguration; identifaction of more like 20% results as being typical;
+1) **Generation 1**: The initial line of inquiry, which surfaces the Metric Hypothesis Test formulation. Seeing a perplexity jump of 40% was enough to get attention; figuring out that the system was fairly invariant over physical batch size changes illustrated additional potential. Code quality was a bit lower.
+2) **Generation 2**: Development of the SOAR research harness, and initial implementation of this library. More rugged exploration of possible confounding factors. Identification of 40% results as being indicative of misconfiguration; identification of more like 20% results as being typical;
 3) **Generation 3**: Current generation (1/1/2025). It was realized weight decay was drastically misconfigured during generation 2, and more complex scheduling was needed. ScheduleAnything was deployed, and the Gradient Quality Control library is rebuilt.
 
 This guide provides commentary on the research line and design decisions behind the Gradient Quality Control library.
@@ -31,7 +31,7 @@ This guide provides commentary on the research line and design decisions behind 
 Generation 1 consisted primarily of ad-hoc experiments to prove the effect was real, and focused around the Metric Hypothesis Test formulation. When faced with a 40% perplexity gain, and a strong enough effect that a 100m parameter model can outperform a 800m parameter one under isotoken budgets, one expects there was a confounding factor. It concluded, in brief
 
 1) This effect is real. Reacting to noise can autotune batch size, it operates across datasets and models, and it gains performance.
-2) The control was dramatically mistuned, and needs to be redone using a tuned default. Karthapy's GPT2 small replication was chosen for the next generation.
+2) The control was dramatically mistuned, and needs to be redone using a tuned default. Karpathy's GPT2 small replication was chosen for the next generation.
 3) There are several control loops. Of them, GNTS is dramatically better and the next generation should use it.
 
 Overall, the situation was the effect was real, there was a confounding factor, but it could not explain all of the performance. Notably, a custom model was used for most of the exploration. Generation 2 would thus be more rigorous. A brief summary of interesting results include:
@@ -45,21 +45,19 @@ Overall, the situation was the effect was real, there was a confounding factor, 
 
 ### Generation 2
 
-Generation 2 was characterized by the development of the Gradient Quality Control research library and the development of the SOARS test harness; in other words, largely, it can be characterized by an increase in rigor and comparison to standard models. It also started from Karthapy's GPT2 replication for control behavior.
+Generation 2 was characterized by the development of the Gradient Quality Control research library and the development of the SOARS test harness; in other words, largely, it can be characterized by an increase in rigor and comparison to standard models. It also started from Karpathy's GPT2 replication for control behavior.
 
 It should be noted that due to budget limitations none of these runs were to chinchilla optimality, and rather usually used 150M tokens unless listed otherwise. As such, read perplexity gains as 'this trains faster' rather than 'this will converge more deeply', as the latter cannot (yet) be proven.
 
-| Event                                                                                 | Outcome                                                      |
-|---------------------------------------------------------------------------------------|--------------------------------------------------------------|
-| 1) Gpt2-small Hyperparameter Empirical probe                                          | Best performer is from 0.95->0.25  norm schedule             |
-| 2) gpt2-small model setup to Karparthy tuned standards vs GNTS tuned                  | About a 16% gain in perplexity (53.2->44.4) in same time     |
-| 3) gpt2-small catastrophically mistuned batch size vs GNTS tuned                      | about a PLACEHOLDER% gain in perplexity                      |
-| 4) gpt2-small at physical batch size of 4, 8, 16, 32                                  | Usually requested the same logical batch size, and within 5% |
-| 5) gpt2-small norm threshold hyperparameters seek varying token counts                | Same hyperparameters at both sizes                           |
-| 6) gpt2-medium norm threshold hyperparameter seek                                     | Same hyperparameters as gpt2-small                           ||
-| ---------------------------------------------------------------------                 | --------------------------------------------------           |
+| Event                                                                  | Outcome                                                      |
+|------------------------------------------------------------------------|--------------------------------------------------------------|
+| Gpt2-small Hyperparameter Empirical probe                              | Best performer is from 0.95->0.25  norm schedule             |
+| gpt2-small model setup to Karpathy tuned standards vs GNTS tuned       | About a 16% gain in perplexity (53.2->44.4) in same time     |
+| gpt2-small at physical batch size of 4, 8, 16, 32                      | Usually requested the same logical batch size, and within 5% |
+| gpt2-small norm threshold hyperparameters seek varying token counts    | Same hyperparameters at both sizes                           |
+| gpt2-medium norm threshold hyperparameter seek                         | Same hyperparameters as gpt2-small                           |
 
-Generation two can said to have concluded when it was realized in transitioning from generation one to generation two a mistake was maid handling weight decay. The entire generation two series was done with weight decay that did not actually reduce as training proceeded, as the learning weight was warmed up to a constant then stuck there, and the length of the gradients were controlled directly instead. This was only identified as an issue when replications across larger models were attempted; a larger model should never perform worse than the smaller one unless something is drastically misconfigured, as indeed it was. 
+Generation two can said to have concluded when it was realized in transitioning from generation one to generation two a mistake was made handling weight decay. The entire generation two series was done with weight decay that did not actually reduce as training proceeded, as the learning weight was warmed up to a constant then stuck there, and the length of the gradients were controlled directly instead. This was only identified as an issue when replications across larger models were attempted; a larger model should never perform worse than the smaller one unless something is drastically misconfigured, as indeed it was. 
 
 ### Generation 3
 
@@ -87,7 +85,7 @@ The algorithm that best balances these tradeoffs is judged to be the best one.
 
 ### Initial Theory of MHT operation
 
-The initial metric hypothesis test formulation used loss as a metric, drew losses during gradient accumulation, and stepped only when a formal hypothesis test has cleanly pinned down what the loss actually was. The hope was we could then use that, with a one-time tuning, then generalize to giving reasonable performance across a variety of conditions. This worked, however a better formulation has since been developed. At this phase, nothing were scheduled. Both a loss and a gradient norm version were tested, although the norms had yet to be scheduled and generally performed worse. A reactive system was already a primary design requirement, and the whole thing started as 'let's solve this hyperparameter issue'.
+The initial metric hypothesis test formulation used loss as a metric, drew losses during gradient accumulation, and stepped only when a formal hypothesis test has cleanly pinned down what the loss actually was. The hope was we could then use that, with a one-time tuning, then generalize to giving reasonable performance across a variety of conditions. This worked, however a better formulation has since been developed. At this phase, nothing was scheduled. Both a loss and a gradient norm version were tested, although the norms had yet to be scheduled and generally performed worse. A reactive system was already a primary design requirement, and the whole thing started as 'let's solve this hyperparameter issue'.
 
 ### Gradient Noise Scale
 
@@ -105,7 +103,7 @@ What do you do when your theory breaks? I am trained for this from my physics de
 * I want to directly measure the generalization signal in training gradients.
 * I want to be able to do so in a manner that is fast and efficient.
 * I want to be able to train LLMs to produce the best generalization behavior possible; Information Retrieval is strictly out of scope.
-* 
+
 ### Scope Of Theory: What is Generalization?
 
 If I am to measure something as nebulous as how much 'generalization' signal exists, I must first have some idea of what it is in the first place. What is generalization, and how does it behave in LLM training? As a first approximation, we might say:
@@ -141,7 +139,7 @@ The covariance scales as $1/N$. Informally speaking, the noise has mean zero and
 
 ### The Measurement Problem
 
-In theory, the ideal measurement would be straightforward: compute the true mean gradient $\boldsymbol{\mu}_t$, then measure the similarity (perhaps via cosine similarity or Euclidean distance) between our current gradient estimate and this true value. This approach has an obvious problem: we cannot compute $\boldsymbol{\mu}_t$ during training. Computing the true mean would require evaluating gradients across the entire training distribution, which is exactly what we're trying to avoid by using minibatches in the first place. However, there is an approach which is viable in high-noise regimes. When the covariance matrix tends to be much larger than the mean, taking a mean of errors tends to make the length of the individual vectors shrink! This means the mean gradient norm is usuable as a detection mechanism, and the ratio of the original to final gradient norm roughly bounds the error.
+In theory, the ideal measurement would be straightforward: compute the true mean gradient $\boldsymbol{\mu}_t$, then measure the similarity (perhaps via cosine similarity or Euclidean distance) between our current gradient estimate and this true value. This approach has an obvious problem: we cannot compute $\boldsymbol{\mu}_t$ during training. Computing the true mean would require evaluating gradients across the entire training distribution, which is exactly what we're trying to avoid by using minibatches in the first place. However, there is an approach which is viable in high-noise regimes. When the covariance matrix tends to be much larger than the mean, taking a mean of errors tends to make the length of the individual vectors shrink! This means the mean gradient norm is usable as a detection mechanism, and the ratio of the original to final gradient norm roughly bounds the error.
 
 ### The Tractability Problem
 
@@ -155,7 +153,7 @@ $$\text{GMR}_t = \frac{\mathbb{E}_n[\|G_{tn}\|]}{\|\bar{G}_t\|}$$
 
 where $\mathbb{E}_n[\|G_{tn}\|]$ is the expected magnitude of single-batch gradients and $\|\bar{G}_t\|$ is the magnitude after averaging $N$ samples.
 
-This ratio directly quantifies the magnitude reduction due to noise cancellation. If $\text{GNR}_t = k$, then single-batch gradients have $k$ times the magnitude of the averaged gradient, meaning approximately $(k-1)/k$ of the single-batch magnitude was noise that cancelled away.
+This ratio directly quantifies the magnitude reduction due to noise cancellation. If $\text{GMR}_t = k$, then single-batch gradients have $k$ times the magnitude of the averaged gradient, meaning approximately $(k-1)/k$ of the single-batch magnitude was noise that cancelled away.
 
 In practice, this can be estimated during training by drawing multiple batches, computing the mean of their individual norms, and dividing by the norm of their average. For example, drawing 100 batches and computing:
 
