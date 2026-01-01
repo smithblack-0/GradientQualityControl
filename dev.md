@@ -16,14 +16,14 @@ This enables architecture to emerge from constraints rather than guesswork. Trad
 
 DDD requires a specific workflow to realize its benefits. A good workflow should allow working at one abstraction level at a time, naturally identify when sub-abstractions need fleshing out further, cleanly split up roles between designers, auditors, and implementers, and naturally slice out levels of abstraction to produce clean and easily refactored code.
 
-The workflow operates in a cycle:
+The workflow operates in a cycle that spawns forks at progressively finer abstraction levels:
 
 ```
 API Requirement → Documentation → Tests → Implementation → Integration Tests
-                      ↓
-                (spawns new API requirement for dependencies)
-                      ↓
-                  Fork to document new contract
+                                    ↓ (spawns dependency API)
+                                    API Requirement → Documentation → Tests → Implementation → Integration Tests
+                                                                        ↓ (spawns sub-dependency)
+                                                                        API Requirement → Documentation → Tests → ...
 ```
 
 Starting from a **design foundation** that establishes the project's invariants, requirements, utilities, and directions, you progressively unroll detail:
