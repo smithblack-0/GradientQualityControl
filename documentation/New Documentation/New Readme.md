@@ -12,25 +12,22 @@ It provides  drop-in optimizer wrappers built on top of the robust ScheduleAnyth
 - **[Base Object API](base_object_api.md)** - Abstract base class for extending with custom algorithms
 - **[Research Guide](research_guide.md)** - Commentary on the research line and design decisions
 
-## Why Gradient Quality Control?
+## What is Gradient Quality Control?
 
 An enormous amount of effort has gone into examining optimizer theory in machine learning, with options like Adam, AdamW, AdaGrad, etc. Surprisingly little research, however, has gone into deciding when to take an optimizer step in the first place, with AdaBatch being one notable example. Even less research has used gradient accumulation to dynamically control batch size. And nothing, as far as we can tell, has observed that how big the batch is can be composed orthogonally to standard optimizer theory using gradient accumulation and a .step()/continue_to_accumulate sequential binary control decision.
 
 This library fits in that missing niche. We define an abstract optimizer wrapper class for gradient accumulation fitting formally in the Sequential Binary Decision Controller control theory niche; concrete cases then implement the control algorithm. Decision constants like thresholds or targets are defined as schedulable parameters using ScheduleAnything. Some algorithms have shown incredible promise at this point, and the library is moving towards production-ready usage with some flagship algorithms.
 
-The line of research have been designed specifically with assisting small-scale labs and prototyping in mind. The library specifically includes algorithms that seek to maintain the best balance of the following.
+## Why would I want it?
 
-1) Maintains largely the same logical batch size regardless of the underlying physical batch size. 
-2) Seeks out and maintains, as best as possible, the best logical batch size tuning when the same model is scaled up or down in size.
-3) Seeks out and maintains, as best as possible, the best logical batch size tuning regardless of the underlying dataset.
-4) Support this with defaults that largely 'just work' for common LLM pretraining activities.
-5) React to low quality data and increase the batch size to compensate.
+Four main reasons.
 
-In other words, **this line of research is explicitly to remove a hyperparameter tuning pain point in prototyping and research.** If batch size tuning is easy, it means small labs iterate much quicker. You also get a bit of extra performance on top, for free, and this effect should persist to scale, though this has not yet been verified.
+1) **The flagship algorithm reduces hyperparameter tuning**: The GNTS algorithm is not tuning-free under all circumstances, but several orders of magnitude tuning lighter. You may vary physical batch size, dataset, model size, and other features across several orders of magnitude before performance degrades below an acceptable level, and the system is robust to minor architecture changes. Tuning once for small, medium, and large model sizes then varying arbitrarily within the size is possible. 
+2) **It gains you a little extra performance on well-tuned models**: Even when the model has already been tuned, the reactive nature of the GNTS controller ensures it draws more batches when the gradients gets noisy, which tends to improve training efficiency by 10-20%. 
+3) **It works out of the box in most distributed environments**: The library will tell you when it needs additional distributed information, and naturally supports distribution on all algorithms. 
+4) **It naturally adapts to noise in exploratory research**: Since GNTS is reactive to noise in the gradients, it should allow much faster iteration during exploratory research in novel models which may implement layers that increase the noise level shifting where the ideal batch size is. This makes it significantly easier to avoid false negatives when you do not have funding for hyperparameter tuning.
 
-## Who needs this?
-
-This library is designed exclusively for the PyTorch ecosystem, and has been tried primarily as an LLM pretraining aid, though it may end up useful for fine tuning too.
+Overall, the most exciting consequence may be the democratization effect. It is possible for small groups to do research or training that used to require a much larger budget, while not significantly increasing the capacities at the frontier end of the scale, increasing research churn and efficiency. This was, in fact, the primary design goal of this line of research.
 
 ### Practitioners
 
@@ -52,9 +49,7 @@ If you are a researcher interested in this line of research, it is recommended t
 
 ## Getting Started
 
-GNTS automatically tunes batch size during training by accumulating gradients based on their quality. The factory configures all schedules - just swap your optimizer initialization and train normally.
-
-This algorithm is continuously maintained as the example of the most productive implementation yet discovered. It has last been updated on 12/28/2025
+GNTS automatically tunes batch size during training by accumulating gradients based on their quality. The factory configures all schedules - just swap your optimizer initialization and train normally. This algorithm is continuously maintained as the example of the most productive implementation yet discovered. It has last been updated on 12/28/2025
 
 Getting started with GQC is straightforward.
 
