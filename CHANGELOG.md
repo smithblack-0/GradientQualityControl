@@ -2,13 +2,9 @@
 
 ## 0.9.0
 
-- BREAKING CHANGE: Last one. Redid how and where schedules are stored. It is now expected that classes that need additional features can make them in the optimizer by adding them to the main optimizer state dict, and you bind arbitrary schedules onto these optimizers and can then collect them together into a composite schedules. Functions which do this automatically will be added. 
-- Added arbitrary schedule subsystem
-- Changed base class to now use optimizer_utils features for changing grad norm and computing them.
-- Changed GNTS to use the same system
-- GNTS now expects an arbitrary schedule pointed at "grad_norm_threshold"
-- SBC now expects an arbitrary schedule pointed at "logical_batch_size"
-- Experimental Catagory added.
+- BREAKING CHANGE: Rebuilding using Documentation Driven Development and ScheduleAnything
+- Complete rebuild of all documentation.
+- Onto library rebuild
 
 ## 0.8.6
 
