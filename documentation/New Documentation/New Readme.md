@@ -30,7 +30,7 @@ In other words, **this line of research is explicitly to remove a hyperparameter
 
 ## Who needs this?
 
-This library is designed exclusively for the PyTorch ecosystem, and has been tried primarily as an LLM pretraining aid, though it may end up useful for fine tuning too. The exact
+This library is designed exclusively for the PyTorch ecosystem, and has been tried primarily as an LLM pretraining aid, though it may end up useful for fine tuning too.
 
 ### Practitioners
 
@@ -48,7 +48,7 @@ Then you are currently unsupported and would have to implement your own algorith
 
 ### Researchers
 
-If you are a researcher interested in this line of reseearch, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Optimizer Wrapper API](optimizer_wrapper_api.md) for underlying details of the algorithms.
+If you are a researcher interested in this line of research, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Optimizer Wrapper API](optimizer_wrapper_api.md) for underlying details of the algorithms.
 
 ## Getting Started
 
@@ -109,7 +109,7 @@ for inputs, labels in train_loader:
     schedule.step()
 ```
 
-Under the hood, this is implementing a ScheduleAnything schedule that sets the "gradient_norm_threshold" to follow a curve, from 0.95 to 0.25 by default. The system then accumulated gradients until the gradient norm is *below* this threshold. It should be kept in mind **lower numbers are more restrictive**. and the exact values can be edited. Please also keep in mind that due to lower numbers being more restrictive this uses an **inverse warmup** when controlling the norm threshold, though it uses a normal warmup for weight decay and loss.
+Under the hood, this is implementing a ScheduleAnything schedule that sets the "gradient_norm_threshold" to follow a curve, from 0.95 to 0.25 by default. The system then accumulates gradients until the gradient norm is *below* this threshold. It should be kept in mind **lower numbers are more restrictive**. and the exact values can be edited. Please also keep in mind that due to lower numbers being more restrictive this uses an **inverse warmup** when controlling the norm threshold, though it uses a normal warmup for weight decay and loss.
 
 ### Custom Parameters
 
