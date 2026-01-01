@@ -6,271 +6,46 @@ This project uses documentation driven development.
 
 ### Big Picture
 
-Document-Driven Development is a **contract-first development, outside-in methodology** where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), implementing tests while filling out the dependency public specification, then implement code to conform to those specifications.
+Document-Driven Development is a contract-first development, outside-in methodology where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), implementing tests while filling out the dependency public specification, then implement code to conform to those specifications.
 
-**Core mechanism:** Work at only one abstraction level at a time, pushing lower-level concerns into future bounded contracts that can be filled later or by others.
+The core mechanism is working at only one abstraction level at a time, pushing lower-level concerns into future bounded contracts that can be filled later or by others. During testing you realize "I need something doing X, Y, Z" and create an interface to test against, sending it back to the documentation team to formalize as a new contract. This means documentation plus interfaces IS the specification - you can slice off pieces of the problem and defer them.
 
-**Why this works:**
-- **Documentation is cheap to refactor** - Architecture emerges through progressive refinement during documentation phase, not during expensive implementation phase
-- **Tests drive interface discovery** - APIs emerge when writing tests (not designed upfront), documentation formalizes them as contracts
-- **Implementation becomes mechanical** - All dependencies identified during planning, implementation is just "fill this contract to pass tests"
-- **LLM-friendly** - Modern LLMs can implement to Natural Language Formal Specifications, enabling true parallel development (humans design, LLMs/juniors implement)
+This works because documentation is cheap to refactor (architecture emerges through progressive refinement during documentation phase, not during expensive implementation), tests drive interface discovery (APIs emerge when writing tests, not designed upfront), implementation becomes mechanical (all dependencies identified during planning), and modern LLMs can implement to Natural Language Formal Specifications enabling true parallel development where humans design and LLMs implement.
 
-**Key mechanism:** During testing you realize "I need something doing X, Y, Z" → Create interface → Test against it → Send back to documentation team to formalize → Continue at your abstraction level. **Documentation + Interfaces IS the specification.**
-
-**Taxonomical classification:** Contract-first development, project-oriented (produces substantial documentation mass). Excellent for building tools and libraries with stable requirements, poor fit for rapidly changing requirements or throwaway prototypes.
+This is a contract-first development, project-oriented workflow that produces substantial documentation. It's excellent for building tools and libraries with stable requirements, but a poor fit for rapidly changing requirements or throwaway prototypes.
 
 ### Workflow
 
-**The iterative loop:**
+The development cycle follows an iterative loop. You start by documenting public behavior for the thing you're building - this can be vague initially, just needs the public API surface defined. As you write tests, you realize what dependencies you need to inject, and the necessary APIs emerge naturally here rather than being designed upfront. When you identify a needed dependency interface, you fork by sending it back to the documentation role to flesh out as a new contract. Then you implement code to pass tests (a mechanical, bounded task) and implement integration tests to verify pieces work together. The cycle loops back to writing tests for the next piece.
 
-1. **Document public behavior** - Write contract for the thing you're building (can be vague "does X somehow", just needs public API surface)
-2. **Write tests** - As you write tests, you realize "I need to inject something doing Y, Z" → APIs emerge here
-3. **FORK** - Send the needed dependency interface back to documentation role to flesh out as new contract
-4. **Implement code** - Write implementation to pass tests (mechanical, bounded)
-5. **Implement integration tests** - Verify the pieces work together
-6. **Loop back to step 2** - Continue with next piece
+The key inversion compared to traditional development is that tests drive interface discovery, documentation captures those interfaces as contracts, and implementation fills contracts. Traditional development discovers interfaces during implementation, which is too late and causes refactoring.
 
-**Key insight:** You don't write stub APIs first - they **emerge during test writing** when you realize what you need to inject. Testing phase discovers the necessary interfaces, documentation phase formalizes them as contracts.
+During the documentation phase, forks happen when documenting contract A and realizing "A needs something with properties X, Y, Z". You can fork immediately (document contract B, write tests, implement it, return to A), stub for later (document B with vague behavior but include the public API, continue with A and fill B later), or handle both all-at-once (document both contracts together with clear injection points). The critical rule: if you discover a missing dependency during implementation, you failed at planning - forks should happen during documentation or test writing, never during implementation.
 
-**The inversion:** Tests drive interface discovery, documentation captures interfaces as contracts, implementation fills contracts. Traditional development discovers interfaces during implementation (too late, causes refactoring).
+During the testing phase, tests validate contracts using strict black box methodology. You test public methods and their documented behaviors, observable state like properties and return values, injected dependencies usage, and emergent behavior from following the contract. You cannot test implementation details, undocumented behavior, private state, or specific functions doing specific things - test the contract, not the implementation. For example, instead of testing "take_optimizer_step averages gradients" (white box, tests specific function), you test "using optimizer results in gradient averaging" (black box, tests emergent behavior from contract). This ensures complete decoupling where implementation can change freely and tests remain valid across refactors.
 
-### The Core Mechanism: Single-Level Abstraction
+If documentation and testing were done correctly, implementation should be mechanical: read the contract, look at the test suite, write code that makes tests pass, refactor internally as needed with tests protecting you. Red flags during implementation include discovering new dependencies (missed during documentation), unclear what to implement (contract underspecified), tests don't cover behavior (tests incomplete), or needing to change the contract (architecture mismatch - refactor docs, update tests, then implement).
 
-**The fundamental principle that makes DDD work:**
+### Mechanics
 
-You **never work at more than one level of abstraction simultaneously**. Instead, you isolate related abstractions at the same level, document them together, then push lower-level concerns into future bounded contracts.
+The fundamental principle enabling DDD is never working at more than one level of abstraction simultaneously. You isolate related abstractions at the same level and document them together, pushing lower-level concerns into future bounded contracts. During documentation you identify what abstraction level you're working at, recognize dependencies at lower levels, contract them out by defining interfaces with stubbed behavior, stay at your level, and fill in lower-level contracts later or assign to others. During testing this becomes creating interfaces for needed dependencies, testing against those interfaces through dependency injection and black box testing, stubbing dependencies for now, and passing them back to the documentation team to fill in later.
 
-**How this works in practice:**
+This works because each object and document contains things at the same abstraction level, lower-level details become contracted stubs, the hierarchy starts at the public interface and progressively deepens, you're always solving a bounded problem at one abstraction level, and there's no cognitive overload from mixing abstraction levels. This fails when insisting on single objects instead of multiple abstraction layers, not contracting out sub-roles as separate abstractions, trying to work at multiple abstraction levels simultaneously, or mixing high-level architecture with low-level implementation details.
 
-1. **During documentation**: Identify what abstraction level you're working at (e.g., "public optimizer interface")
-2. **Identify dependencies**: "This needs something that does X, Y, Z" - that's a lower abstraction level
-3. **Contract it out**: Define the interface/contract for that dependency, stub the behavior
-4. **Stay at your level**: Continue documenting at your current abstraction level
-5. **Later**: Fill in the lower-level contract (or assign to someone else)
+The methodology creates three distinct roles. The designer writes contracts (documentation), designs architecture through progressive refinement, identifies and documents dependencies, makes architectural trade-offs explicit, and requires domain expertise and architectural vision. The auditor reviews contracts for completeness and consistency, verifies tests properly validate contracts with black box compliance, identifies ambiguities or underspecified behavior, checks that implementation honors contracts, and LLMs can sometimes serve as auditors for spotting inconsistencies and checking coverage. The implementer implements test suites from contracts (mechanical transcription), implements code to pass tests (bounded problem solving), identifies contract ambiguities during implementation and escalates to designer, refactors within contract bounds, and LLMs often make good implementers since they excel at "implement to spec" but struggle with "design the spec". This separation works because designing contracts requires expertise and vision (human-centric), auditing can be partially automated (LLMs good at consistency checking), and implementation from clear specs is mechanical (LLMs and juniors effective).
 
-**During testing, this becomes:**
-- "I need something doing THESE functions and will verify my class uses them"
-- Create interface for the dependency
-- Test against that interface (dependency injection + black box testing)
-- Stub the dependency for now
-- Pass back to documentation team to fill in later
+DDD is project-oriented and produces substantial documentation mass - it's not lightweight. It's an excellent fit for building tools and libraries with clear contracts and stable interfaces, stable or well-understood requirements, projects needing parallel development with distributed teams or LLM assistance, code maintained long-term, when architecture quality matters more than speed-to-first-prototype, and complex systems requiring multiple abstraction layers. It's a poor fit for rapidly changing requirements where contracts invalidate quickly and documentation effort is wasted, throwaway prototypes or exploratory code, research code where you're discovering what to build, very small single-file projects where overhead isn't justified, and projects that don't naturally decompose into multiple abstraction layers.
 
-**Key insight:** Documentation + Interfaces IS the specification. By including needed dependency behavior through dependency injection into black box testing contracts, you can slice off pieces of the problem and defer them.
+Practical notes: documentation is held to formal specification standards where if it's not documented it doesn't exist and inconsistencies in docs are bugs, requiring version control of docs with same rigor as code. Progressive refinement starts with high-level contracts, refactors docs as patterns emerge (when "these three features all need X" you abstract X into shared contract), and narrows the solution space iteratively. Integration just works if both sides honor contracts with no "how do I call this?" questions, no mismatched assumptions, and the contract serving as the integration specification.
 
-**Why this works:**
-- Each object/document contains things at the **same abstraction level**
-- Lower-level details become contracted stubs
-- Hierarchy starts at public interface, progressively deepens
-- You're always solving a bounded problem at one abstraction level
-- No cognitive overload from mixing abstraction levels
+### Benefits
 
-**When this fails:**
-- Insisting on single objects instead of multiple abstraction layers
-- Not contracting out sub-roles as separate abstractions
-- Trying to work at multiple abstraction levels simultaneously
-- Mixing high-level architecture with low-level implementation details
+The deeper theory of why DDD works rests on several fundamental insights. Documentation strength enables code development because sufficiently strong documentation is sufficient specification for implementation, documentation can progressively detail lower abstraction levels, and each level can be filled in independently. Architecture and code are opposing abstraction processes - writing consistent high-level architecture is abstract, conceptual, and interface-focused, while writing concrete implementation code is detailed, specific, and mechanism-focused, and trying to do both simultaneously creates cognitive overload and poor results, so DDD separates these into sequential phases.
 
-### Key Insights Enabling DDD
+Refactoring is dramatically easier when only documentation exists because before code exists architectural changes are just text edits, outside-in development from interface to implementation prevents major architectural breakage, and by the time you write code the architecture has been refined and validated. Traditional development guesses architecture upfront, discovers it doesn't fit, and requires expensive refactoring, while DDD documents high-level contracts, notices patterns as you realize "these all need X" and abstracts naturally, uses progressive refinement where each iteration narrows the solution space converging on correct architecture, and by implementation phase the architecture has already been pressure-tested against requirements.
 
-These insights make DDD practical with modern technology:
+Documentation being cheap to refactor means changing a function signature in docs takes 30 seconds while changing it in code requires refactoring all call sites, updating tests, and fixing breaks - design iteration happens in the cheap phase (documentation) rather than expensive phase (code). Implementation becomes mechanical because all dependencies are identified during planning, all interfaces are defined before coding, and the implementation task is simply "fill in this contract to pass these tests" with no architectural decisions, no scope creep, and clear success criteria.
 
-**1. Documentation strength enables code development**
-- Sufficiently strong documentation is sufficient specification for implementation
-- Documentation can progressively detail lower abstraction levels
-- Each level can be filled in independently
+True parallel development emerges because bounded contracts can be filled by different people or teams simultaneously with no coordination needed beyond honoring contracts and integration guaranteed if both sides satisfy their contracts. Refactoring freedom comes from black box tests validating contracts not implementation, meaning you can completely rewrite internals as long as the contract is preserved with no fear of breaking hidden assumptions.
 
-**2. Architecture and code are opposing abstraction processes**
-- Writing consistent high-level architecture: abstract, conceptual, interface-focused
-- Writing concrete implementation code: detailed, specific, mechanism-focused
-- Trying to do both simultaneously creates cognitive overload and poor results
-- DDD separates these into sequential phases
-
-**3. Refactoring is easier when only documentation exists**
-- Before code exists, architectural changes are just text edits
-- Outside-in development (interface → implementation) prevents major architectural breakage
-- By the time you write code, architecture has been refined and validated
-
-**4. Modern LLMs can implement to Natural Language Formal Specifications**
-- This is the technological enabler that makes insights 1-3 practically exploitable
-- With LLMs, documentation CAN BE the specification (no separate formal spec language needed)
-- Implementation details abstract into successively deeper backend documentation
-- Each layer has public contracts validated by black box tests
-- LLMs excel at "implement to spec" but struggle with "design the spec"
-
-**Result:** Human designers work at the abstraction/architecture level (their strength), LLMs/juniors work at the implementation level (bounded problem-solving), and the methodology ensures they integrate seamlessly.
-
-### Why DDD Works
-
-**1. Documentation is Cheap to Refactor**
-- Change a function signature in docs: 30 seconds
-- Change a function signature in code: refactor all call sites, update tests, fix breaks
-- Design iteration happens in the cheap phase (documentation), not expensive phase (code)
-
-**2. Architecture Emerges from Constraints**
-- Traditional: Guess architecture upfront → discover it doesn't fit → expensive refactoring
-- DDD: Document high-level contracts → notice patterns ("these all need X") → abstract naturally
-- Progressive refinement: Each iteration narrows solution space, converging on correct architecture
-- By implementation phase, architecture has already been pressure-tested against requirements
-
-**3. Implementation Becomes Mechanical**
-- All dependencies identified during planning
-- All interfaces defined before coding
-- Implementation task: "Fill in this contract to pass these tests"
-- No architectural decisions, no scope creep, clear success criteria
-
-**4. True Parallel Development**
-- Bounded contracts can be filled by different people/teams simultaneously
-- No coordination needed beyond honoring contracts
-- Integration guaranteed if both sides satisfy their contracts
-
-**5. Refactoring Freedom**
-- Black box tests validate contracts, not implementation
-- Can completely rewrite internals as long as contract preserved
-- No fear of breaking hidden assumptions
-
-### The Documentation Phase
-
-Documentation is where **forks happen**. When documenting contract A, you realize "A needs something with properties X, Y, Z". You have three options:
-
-**Option 1: Fork immediately**
-1. Document contract B with public API providing X, Y, Z
-2. Write tests for B
-3. Implement B
-4. Return to implementing A, injecting B
-
-**Option 2: Stub for later**
-1. Document contract B with vague behavior "does X, Y, Z somehow"
-2. Must include public API (method signatures, properties)
-3. Continue with A, filling in B later (or assign to someone else)
-
-**Option 3: All-at-once**
-1. Document both contracts A and B together
-2. Define clear injection points
-3. Proceed to testing phase
-
-**Critical rule:** If you discover a missing dependency during **implementation**, you failed at planning. Forks should happen during documentation or test writing, never during implementation.
-
-**Why forks happen during documentation:**
-- You're designing the public interface
-- To write tests, you need to know what to inject
-- Dependencies become obvious when specifying behavior
-- Cheap to add new contracts at this stage
-
-### The Testing Phase
-
-Tests validate contracts using **strict black box methodology**. Tests can also spawn forks when you realize "to test A's behavior, I need to inject B with these properties".
-
-**Black Box Testing Rules:**
-
-What you CAN test:
-- Public methods and their documented behaviors
-- Observable state (properties, return values)
-- Injected dependencies usage (e.g., optimizer.step() called)
-- Emergent behavior from following the contract
-- Protected methods ONLY through documented subclass contracts
-
-What you CANNOT test:
-- Implementation details (how something works internally)
-- Undocumented behavior
-- Private state or mechanisms
-- Specific functions doing specific things (test the contract, not the implementation)
-
-**Example of black box vs white box:**
-- ❌ White box: "test_take_optimizer_step_averages_gradients" - tests specific function implementation
-- ✓ Black box: "test_using_optimizer_results_in_gradient_averaging" - tests emergent behavior from contract
-
-**Why black box testing:**
-- Complete decoupling: implementation can change freely
-- Tests remain valid across refactors
-- Forces clear contracts (if you can't test it black box, contract is unclear)
-- Enables true parallel development
-
-### The Implementation Phase
-
-If documentation and testing were done correctly, implementation should be **mechanical**:
-
-1. Read the contract
-2. Look at the test suite
-3. Write code that makes tests pass
-4. Refactor internally as needed (tests protect you)
-
-**Red flags during implementation:**
-- Discovering new dependencies → You missed them during documentation
-- Unclear what to implement → Contract is underspecified
-- Tests don't cover behavior → Tests incomplete
-- Need to change contract → Architecture mismatch (refactor docs, update tests, then implement)
-
-**Green flags:**
-- Clear what to build
-- Tests give immediate feedback
-- Can refactor freely
-- Just filling in bounded contracts
-
-### Roles in DDD
-
-**Designer Role:**
-- Write contracts (documentation)
-- Design architecture through progressive refinement
-- Identify and document dependencies
-- Make architectural trade-offs explicit
-- Requires domain expertise and architectural vision
-
-**Auditor Role:**
-- Review contracts for completeness and consistency
-- Verify tests properly validate contracts (black box compliance)
-- Identify ambiguities or underspecified behavior
-- Check that implementation honors contracts
-- LLMs can sometimes serve as auditors (spotting inconsistencies, checking coverage)
-
-**Implementer Role:**
-- Implement test suites from contracts (mechanical transcription)
-- Implement code to pass tests (bounded problem solving)
-- Identify contract ambiguities during implementation (escalate to designer)
-- Refactor within contract bounds
-- LLMs often make good implementers (excel at "implement to spec")
-
-**Why this separation works:**
-- Designing contracts requires expertise and vision (human-centric)
-- Auditing can be partially automated (LLMs good at consistency checking)
-- Implementation from clear specs is mechanical (LLMs/juniors effective)
-- Each role has clear success criteria and boundaries
-
-### When to Use DDD
-
-DDD is **project-oriented** and produces substantial documentation. It's not "lightweight" - expect to write significant documentation mass.
-
-**Excellent fit:**
-- **Building tools and libraries** - Clear contracts, stable interfaces, reusable components
-- Stable or well-understood requirements
-- Projects needing parallel development (distributed teams, LLM assistance)
-- Code that will be maintained long-term
-- When architecture quality matters more than speed-to-first-prototype
-- Complex systems requiring multiple abstraction layers
-
-**Poor fit:**
-- Rapidly changing requirements (contracts invalidate quickly, wasted documentation effort)
-- Throwaway prototypes or exploratory code
-- Research code where you're discovering what to build
-- Very small single-file projects (overhead not justified)
-- Projects that don't naturally decompose into multiple abstraction layers
-
-### Practical Notes
-
-**Documentation as code:**
-- Documentation is held to formal specification standards
-- If it's not documented, it doesn't exist
-- Inconsistencies in docs are bugs
-- Version control docs with same rigor as code
-
-**Progressive refinement:**
-- Start with high-level contracts
-- Refactor docs as patterns emerge
-- "These three features all need X" → Abstract X into shared contract
-- Narrow solution space iteratively
-
-**Integration:**
-- If both sides honor contracts, integration just works
-- No "how do I call this?" questions
-- No mismatched assumptions
-- Contract is the integration specification 
+Modern LLMs can implement to Natural Language Formal Specifications, which is the technological enabler making insights about documentation strength, opposing abstraction processes, and refactoring ease practically exploitable. With LLMs, documentation can be the specification without needing separate formal spec languages, implementation details abstract into successively deeper backend documentation, each layer has public contracts validated by black box tests, and LLMs excel at "implement to spec" but struggle with "design the spec". This means human designers work at the abstraction and architecture level (their strength) while LLMs and juniors work at the implementation level (bounded problem-solving), and the methodology ensures they integrate seamlessly.
