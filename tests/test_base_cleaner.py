@@ -13,10 +13,14 @@ Test organization:
 - Subclass contract tests: For subclass implementers using protected methods
 """
 
+import os
+import pickle
+import tempfile
+from typing import Optional
+
 import pytest
 import torch
 import torch.nn as nn
-from typing import Optional
 
 from src.gradient_quality_control.base import AbstractOptimizerWrapper
 
@@ -442,10 +446,6 @@ class TestSerializationAPI:
 
     def test_state_dict_can_be_pickled_to_file(self):
         """state_dict() can be saved to disk with pickle and loaded back."""
-        import pickle
-        import tempfile
-        import os
-
         model1, base_opt1 = create_simple_model_and_base_optimizer()
         optimizer1 = MinimalTestOptimizer(base_opt1, step_every=3)
 
