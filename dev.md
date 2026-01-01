@@ -44,9 +44,41 @@ Throughout this cycle, the **auditor role backpropagates changes** through the d
 
 Testing is extremely important. One of the benefits of this workflow is it makes black box testing natural as when tests are written the underlying implementation is not yet known, an advantage of the outside-in development pattern. However, this requires actually following a black box testing strategy.
 
-- CLAUDE FILL IN DETAILS
+Black box testing validates contracts by testing only what's observable through the public interface. You test public methods and their documented behaviors, observable state like properties and return values, how injected dependencies are used, and emergent behavior that results from following the contract. You cannot test implementation details, undocumented behavior, private state, or bind tests to specific internal functions.
 
-### Pros, Cons, Use cases, and why this fits
+The difference matters. Testing "take_optimizer_step averages gradients" is white box - it tests a specific function's implementation. Testing "using optimizer results in gradient averaging" is black box - it tests emergent behavior from following the contract. The first breaks when you refactor internals. The second remains valid as long as the contract is honored.
 
+This creates complete decoupling. Implementation can change freely - different algorithms, data structures, optimizations - and tests remain valid. The contract is the specification, tests validate the contract, and implementation is free to evolve within those bounds. This is what enables LLMs and junior developers to safely implement to spec.
 
-- CLAUDE FILL IN DETAILS.
+### Pros, Cons, Use cases
+
+DDD is project-oriented and produces substantial documentation. It's not lightweight - expect to write significant documentation mass. The methodology works best when you can leverage its strengths and avoid contexts where its properties become liabilities.
+
+**Excellent fit:**
+- Building tools and libraries with stable, well-defined interfaces
+- Projects requiring parallel development across distributed teams or with LLM assistance
+- Code that will be maintained long-term where refactoring freedom matters
+- Complex systems requiring multiple abstraction layers
+- When architecture quality matters more than speed-to-first-prototype
+- After initial viability is proven and you're refactoring prototype to production
+
+**Poor fit:**
+- Rapidly changing requirements where contracts invalidate quickly
+- Throwaway prototypes or exploratory research code
+- Very small single-file projects where overhead isn't justified
+- Projects that don't naturally decompose into abstraction layers
+- When you're still discovering what to build
+
+**Why this fits GradientQualityControl:** We're building a tool library with stable optimizer interfaces, complex multi-layer abstractions (base wrapper, concrete implementations, scheduling integration), need LLM assistance for implementation, require long-term maintainability, and have proven viability through initial experiments. The workflow naturally handles the fork-heavy architecture where each optimizer type spawns its own contract while sharing the base abstraction.
+
+### Roles
+
+The methodology cleanly separates concerns across three distinct roles that can be filled by different people or even different types of workers (humans vs LLMs).
+
+**Designer** writes contracts and designs architecture. They gather requirements, form the big picture story, identify dependencies, make architectural trade-offs explicit, and progressively refine documentation as patterns emerge. This requires domain expertise and architectural vision - understanding what needs to be built and why. Designers work at high abstraction levels.
+
+**Auditor** maintains consistency across the living specification. They backpropagate changes through the documentation tree, elevating discovered dependencies to the big picture when appropriate, resolving conflicts like multiple logging frameworks, reviewing contracts for completeness, verifying tests follow black box methodology, and keeping the big picture synchronized with detailed work. LLMs can sometimes assist with auditing by spotting inconsistencies and checking coverage.
+
+**Implementer** fills bounded contracts. They implement test suites from contracts (mechanical transcription of requirements), implement code to pass tests (bounded problem solving), identify contract ambiguities and escalate to designer, and refactor within contract bounds. LLMs excel as implementers since they're good at "implement to spec" but struggle with "design the spec". Junior developers also work well as implementers with clear contracts.
+
+This separation works because each role operates at its natural abstraction level with clear success criteria and boundaries. Designers need creativity and vision, auditors need consistency checking, implementers need mechanical execution. The workflow ensures clean handoffs between roles.
