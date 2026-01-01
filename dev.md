@@ -14,17 +14,33 @@ This enables architecture to emerge from constraints rather than guesswork. Trad
 
 ### Workflow
 
-DDD requires a specific workflow to realize its benefits. A good workflow should allow working at one abstraction level at a time, naturally identify when sub-abstractions need fleshing out further, cleanly split up roles between designers, auditors, and implementers, and naturally slice out levels of abstraction to produce clean and easily refactored code. The DDD workflow achieves these properties through progressive unrolling from a design foundation.
+DDD requires a specific workflow to realize its benefits. A good workflow should allow working at one abstraction level at a time, naturally identify when sub-abstractions need fleshing out further, cleanly split up roles between designers, auditors, and implementers, and naturally slice out levels of abstraction to produce clean and easily refactored code.
 
-The workflow only functions when unrolling from a design foundation. You begin with design requirements and the overall story contracted at the big picture level - the invariants, requirements, utilities, and directions for the project. From this foundation, you progressively unroll detail by slicing off more levels of abstraction.
+The workflow operates in a cycle:
 
-The development cycle operates by progressive unrolling. As you work on tests at one abstraction level, you realize "I need to inject something doing X, Y, Z" which spawns an API requirement. This API then gets documented as a contract, creating a fork that can be filled later or by others. The sequence is always API emerges from needs, then gets formalized in documentation. When you identify a needed dependency interface during testing, you send it to the documentation role to formalize as a new contract while continuing work at your current abstraction level. Then you implement code to pass tests (a mechanical, bounded task) and implement integration tests to verify pieces work together.
+```
+API Requirement → Documentation → Tests → Implementation → Integration Tests
+                      ↓
+                (spawns new API requirement for dependencies)
+                      ↓
+                  Fork to document new contract
+```
 
-Forks happen when working at one level reveals dependencies at a lower level. You can fork immediately (document the dependency contract, write tests, implement it, return to parent), stub for later (document with vague behavior but include the public API, continue with parent and fill dependency later), or handle both all-at-once (document both contracts together with clear injection points). The critical rule: if you discover a missing dependency during implementation, you failed at planning - forks should happen during design or test writing when working at prior levels of abstraction.
+Starting from a **design foundation** that establishes the project's invariants, requirements, utilities, and directions, you progressively unroll detail:
 
-Testing validates contracts using strict black box methodology. You test public methods and their documented behaviors, observable state like properties and return values, injected dependencies usage, and emergent behavior from following the contract. You cannot test implementation details, undocumented behavior, private state, or specific functions doing specific things - test the contract, not the implementation. For example, instead of testing "take_optimizer_step averages gradients" (white box, tests specific function), you test "using optimizer results in gradient averaging" (black box, tests emergent behavior from contract). This ensures complete decoupling where implementation can change freely and tests remain valid across refactors.
+1. While writing tests at one abstraction level, you realize "I need to inject something doing X, Y, Z"
+2. This **spawns an API requirement** for that dependency
+3. The API requirement gets **documented as a contract**
+4. You can now **fork**: fill the contract immediately, stub it for later, or assign to someone else
+5. Continue testing with the dependency interface defined
+6. Implement code to pass tests
+7. Write integration tests to verify pieces work together
 
-Throughout this process, the auditor role maintains consistency by backpropagating changes through the documentation tree. When detailed work reveals new dependencies like needing a logging role, auditing elevates that to a primary dependency in the big picture and resolves conflicts such as multiple logging frameworks. This keeps the big picture synchronized with detailed work as a living specification. If documentation and testing were done correctly with consistent backpropagation, implementation becomes mechanical: read the contract, look at the test suite, write code that makes tests pass, refactor internally as needed with tests protecting you.
+**Forks slice off bounded work.** When a lower-level dependency emerges, you **contract it out** rather than implementing it inline. The critical rule: **discovering dependencies during implementation means you failed at planning** - forks should happen during design or test writing.
+
+**Black box testing** validates contracts by testing what's observable (public methods, state, injected dependency usage, emergent behavior) rather than how it works internally. Tests must remain valid when implementation changes completely.
+
+Throughout this cycle, the **auditor role backpropagates changes** through the documentation tree. When detailed work reveals new dependencies, auditing elevates them to the big picture and resolves conflicts, keeping the living specification synchronized with detailed work.
 
 ### Mechanics
 
