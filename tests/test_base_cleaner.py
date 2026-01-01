@@ -440,6 +440,54 @@ class TestSerializationAPI:
         assert stepped is True
         assert optimizer2.statistics()["num_steps"] == 2
 
+    def test_state_dict_can_be_pickled_to_file(self):
+        """state_dict() can be saved to disk with pickle and loaded back."""
+        import pickle
+        import tempfile
+        import os
+
+        model1, base_opt1 = create_simple_model_and_base_optimizer()
+        optimizer1 = MinimalTestOptimizer(base_opt1, step_every=3)
+
+        # Execute some operations to create non-trivial state
+        create_gradients(base_opt1, [2.0])
+        optimizer1.step()
+        create_gradients(base_opt1, [2.0])
+        optimizer1.step()
+        create_gradients(base_opt1, [2.0])
+        optimizer1.step()  # Should step
+
+        # Get state before pickling
+        stats_before = optimizer1.statistics()
+
+        # Save to actual file
+        state = optimizer1.state_dict()
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pkl') as f:
+            pickle_path = f.name
+            pickle.dump(state, f)
+
+        try:
+            # Load from file
+            with open(pickle_path, 'rb') as f:
+                loaded_state = pickle.load(f)
+
+            # Create new optimizer and load
+            model2, base_opt2 = create_simple_model_and_base_optimizer()
+            optimizer2 = MinimalTestOptimizer(base_opt2, step_every=3)
+            optimizer2.load_state_dict(loaded_state)
+
+            # Verify state preserved after pickle roundtrip
+            stats_after = optimizer2.statistics()
+            assert stats_after["num_batches"] == stats_before["num_batches"]
+            assert stats_after["num_steps"] == stats_before["num_steps"]
+            assert stats_after["num_draws"] == stats_before["num_draws"]
+            assert stats_after["last_num_draws"] == stats_before["last_num_draws"]
+
+        finally:
+            # Clean up
+            if os.path.exists(pickle_path):
+                os.unlink(pickle_path)
+
 
 # =============================================================================
 # Suite 3: Public API - Other
