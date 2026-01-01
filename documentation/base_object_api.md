@@ -53,7 +53,12 @@ The following fields are available, with indicated behavior, on the main class
 - **`wrapper_states`** (`Dict`) - Internal state storage. **Direct access is undefined behavior.** Use `get_state()` and `set_state()` instead.
 
 **Public Properties**:
-- **`valid_schedule_targets`** (`List[str]`) - Read-only list of all schedulable parameter names. Includes native optimizer parameters (lr, weight_decay, momentum, etc.).
+- **`num_batches`** (`int`) - Total batches processed since wrapper creation
+- **`num_steps`** (`int`) - Total optimizer steps taken
+- **`num_draws`** (`int`) - Batches accumulated since last step (resets to 0 after each step)
+- **`last_num_draws`** (`int`) - Number of batches in most recent optimizer step. None before first step.
+- **`last_grad_norm`** (`float`) - L2 gradient norm from most recent optimizer step. None before first step.
+- **`valid_schedule_targets`** (`List[str]`) - Read-only list of all schedulable parameter names. Includes native optimizer parameters (lr, weight_decay, momentum, etc.) and wrapper-extended parameters.
 
 **Public Methods**
 - **`step`**: Transparently duck-types exactly as before. 
@@ -92,13 +97,20 @@ Attempts to initialize and set fields on the class directly will throw, and in f
 
 ## Essential Details: Essential technical facts for implementers
 
-**Counters: Found in .get_state**
-- `num_batches` - Total batches processed since wrapper creation
-- `num_steps` - Total optimizer steps taken
-- `num_draws` - Batches accumulated since last step (resets to 0 after each step)
+**Built-in Properties:**
+
+All properties below are accessible as direct attributes and through `get_state()`:
+
+- `num_batches` - Total batches processed. Increments on each `_batch_received()` call. **Vital**.
+- `num_steps` - Total optimizer steps taken. Increments on each `_take_optimizer_step()` call. **Vital**.
+- `num_draws` - Batches accumulated since last step. Increments on `_batch_received()`, resets to 0 on `_take_optimizer_step()`. **Vital**.
+- `last_num_draws` - Cached value of `num_draws` from most recent step. Set during `_take_optimizer_step()`. None before first step. **Vital**.
+- `last_grad_norm` - Cached L2 gradient norm from most recent step. Computed and stored during `_take_optimizer_step()`. None before first step. **Vital**.
+
+**Vital** means the property appears in `vital_statistics()`. All built-in properties are vital and appear in both `statistics()` and `vital_statistics()`.
 
 **Gradient Accumulation:**
-PyTorch's `.backward()` sums gradients into `.grad` by default. After N consecutive backward passes, each parameter's `.grad` contains the sum of N batches. The wrapper exploits this: `_take_optimizer_step()` multiplies all gradients by `1/N` to convert sum → mean before stepping. 
+PyTorch's `.backward()` sums gradients into `.grad` by default. After N consecutive backward passes, each parameter's `.grad` contains the sum of N batches. The wrapper exploits this: `_take_optimizer_step()` multiplies all gradients by `1/N` to convert sum → mean before stepping.
 
 **State Storage:**
 All wrapper state lives in `wrapper_states`: `{name: {"value": X, "flag": "vital"/"optional"}}`. Access only through `set_state()` and `get_state()`. Direct field assignment after initialization throws to prevent serialization bugs - if it's not in `wrapper_states`, it won't survive `state_dict()`/`load_state_dict()`.
@@ -114,12 +126,12 @@ The parent constructor sets up the base wrapper infrastructure. When your subcla
 The optimizer parameter should be a fully-configured PyTorch optimizer (Adam, SGD, etc.) with learning rate, weight decay, and other hyperparameters already set. The wrapper doesn't modify optimizer configuration - it just wraps it for gradient accumulation control.
 
 ```python
-def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int)
+def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int = 64)
 ```
 
 **Parameters:**
 - `optimizer` (torch.optim.Optimizer) - Configured PyTorch optimizer to wrap
-- `max_draws` (int) - Maximum batches that can accumulate before forcing a step. Must be ≥ 1.
+- `max_draws` (int = 64) - Maximum batches that can accumulate before forcing a step. Must be ≥ 1.
 
 **Initializes:**
 - Wraps the optimizer for transparent delegation
@@ -189,6 +201,12 @@ def statistics(self, aggregate_behavior: Literal["mean", "max", "min"] = "mean")
 **Returns:**
 - `Dict[str, Any]` - Complete statistics dictionary
 
+**Contents:**
+- All built-in properties (see Essential Details)
+- All wrapper_states entries (vital and optional)
+- All float-valued keys from `optimizer.param_groups` (lr, weight_decay, etc.)
+- Multi-group parameters: aggregated per `aggregate_behavior`, with `*` suffix if heterogeneous
+
 ### vital_statistics
 
 The vital_statistics method returns a curated subset of statistics designed for real-time monitoring during training. Call this to populate progress bars (tqdm), training dashboards, or logging systems where you need to track key health metrics without overwhelming the display. It's the "health dashboard" - just the metrics that matter for monitoring training progress and diagnosing problems at a glance.
@@ -208,8 +226,8 @@ def vital_statistics(self, aggregate_behavior: Literal["mean", "max", "min"] = "
 - `Dict[str, Any]` - Curated vital statistics dictionary
 
 **Contents:**
+- All built-in properties (all are vital - see Essential Details)
 - wrapper_states entries marked `flag="vital"`
-- `num_batches` and `num_draws` (always vital)
 - All float-valued keys from `optimizer.param_groups`
 - Multi-group aggregation: same rules as `statistics()`
 
@@ -444,10 +462,10 @@ def _take_optimizer_step(self) -> None
 
 **Contract**
 1. Average gradients: multiply all by `1 / num_draws`
-2. Compute L2 gradient norm across all parameters; store as "last_grad_norm"
+2. Compute L2 gradient norm across all parameters; store in `last_grad_norm`
 3. Step wrapped optimizer with averaged gradients
 4. Zero all gradients
-5. Update state: store gradient norm, increment `num_steps`, reset `num_draws` to 0
+5. Update properties: store `num_draws` in `last_num_draws`, increment `num_steps`, reset `num_draws` to 0
 
 **Throws:**
 - If `num_draws == 0` (cannot step without accumulated batches)
