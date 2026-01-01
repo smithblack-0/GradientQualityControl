@@ -624,6 +624,37 @@ class TestSubclassOptimizerStepContract:
 
         assert len(zero_grad_called) == 1
 
+    def test_using_optimizer_results_in_gradient_averaging(self):
+        """When following the contract, parameters are updated with averaged gradients, not summed.
+
+        This tests emergent behavior from correct usage, not internal implementation.
+        """
+        # Create simple model with single parameter for easy verification
+        param = nn.Parameter(torch.tensor([10.0]))
+        base_optimizer = torch.optim.SGD([param], lr=1.0)  # lr=1.0 for simple math
+        optimizer = MinimalTestOptimizer(base_optimizer, step_every=3)
+
+        initial_value = param.data.clone()
+
+        # Simulate 3 batches with gradients [2.0], [4.0], [6.0]
+        # Sum = 12.0, Mean = 4.0
+        param.grad = torch.tensor([2.0])
+        optimizer.step()  # Batch 1, accumulates
+
+        param.grad = torch.tensor([4.0])
+        optimizer.step()  # Batch 2, accumulates
+
+        param.grad = torch.tensor([6.0])
+        optimizer.step()  # Batch 3, should step now
+
+        # With lr=1.0 and SGD, update is: param = param - lr * grad
+        # If using MEAN: param = 10.0 - 1.0 * 4.0 = 6.0 ✓
+        # If using SUM:  param = 10.0 - 1.0 * 12.0 = -2.0 ✗
+        expected_value = initial_value - 1.0 * 4.0  # Mean of gradients
+
+        assert torch.allclose(param.data, expected_value), \
+            f"Expected {expected_value}, got {param.data}. Gradients may not be averaged."
+
     def test_take_optimizer_step_handles_none_gradients(self):
         """_take_optimizer_step() handles parameters with None gradients without error."""
         model, base_optimizer = create_simple_model_and_base_optimizer()
