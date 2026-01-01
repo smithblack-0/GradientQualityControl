@@ -245,7 +245,7 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 ### Distributed Support
 
-The primary issues is whether or not samples are independent. 
+The primary issue is whether or not samples are independent.
 
 - **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list.
 - **`sharded`**: This is still just one batch. We average the metric to be safe, and just consider it one sample.
@@ -283,7 +283,8 @@ The constructor wraps an optimizer, and asks for exactly as much additional info
 def __init__(
     self,
     optimizer: torch.optim.Optimizer,
-    max_batch_draws: int = 64
+    max_batch_draws: int = 64,
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 )
 ```
 
@@ -292,6 +293,7 @@ where
 **Parameters:**
 - `optimizer` - Configured PyTorch optimizer to wrap
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
+- `distributed_mode` - One of "replicated", "sharded". Replicated is used for data parallel processes like DDP, while sharded for model parallel processes. These influence how to merge metrics.
 
 ### Schedule Targets
 
