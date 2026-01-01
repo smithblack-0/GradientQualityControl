@@ -25,8 +25,8 @@ def make_sbc_with_polynomial_schedule(
     physical_batch_size: int,
     initial_batch_size: int,
     final_batch_size: int,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     polynomial_power: float = 2.0,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None
@@ -37,10 +37,10 @@ def make_sbc_with_polynomial_schedule(
 
 - `optimizer` - Configured PyTorch optimizer (uses existing lr and weight_decay values)
 - `physical_batch_size` - Size of each microbatch; required to infer logical batch size.
-- `initial_batch_size` - Starting logical batch size after warmup completed. 
+- `initial_batch_size` - Starting logical batch size after warmup completed.
 - `final_batch_size` - Ending logical batch size.
-- `total_steps` - Total training steps for schedule duration
-- `warmup_steps` - Steps for initial warmup phase; Warmup executes by aggressively stepping
+- `num_training_steps` - Total training steps for schedule duration
+- `num_warmup_steps` - Steps for initial warmup phase; Warmup executes by aggressively stepping
 - `polynomial_power` - Exponent for polynomial curve (default: 2.0 for quadratic)
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode. 
@@ -49,7 +49,7 @@ def make_sbc_with_polynomial_schedule(
 ### Schedule Configuration
 
 - **Learning rate**: Warmup to constant (uses optimizer's initial lr)
-- **Batch size**: Polynomial curve from initial to final over total_steps, with direct warmup
+- **Batch size**: Polynomial curve from initial to final over num_training_steps, with direct warmup
 - **Weight decay**: Direct warmup into cosine annealing to zero (compensates for removed lr schedule)
 ---
 
@@ -60,13 +60,13 @@ Allows following a polynomial curve from initial batch size to final batch size 
 ### Signature
 
 ```python
-def make_sbc_with_polynomial_schedule(
+def make_sbc_with_polynomial_schedule_conventional_lr(
     optimizer: torch.optim.Optimizer,
     physical_batch_size: int,
     initial_batch_size: int,
     final_batch_size: int,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     polynomial_power: float = 2.0,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None
@@ -77,23 +77,22 @@ def make_sbc_with_polynomial_schedule(
 
 - `optimizer` - Configured PyTorch optimizer (uses existing lr and weight_decay values)
 - `physical_batch_size` - Size of each microbatch; required to infer logical batch size.
-- `initial_batch_size` - Starting logical batch size after warmup completed. 
+- `initial_batch_size` - Starting logical batch size after warmup completed.
 - `final_batch_size` - Ending logical batch size.
-- `total_steps` - Total training steps for schedule duration
-- `warmup_steps` - Steps for initial warmup phase; Warmup executes by aggressively stepping
+- `num_training_steps` - Total training steps for schedule duration
+- `num_warmup_steps` - Steps for initial warmup phase; Warmup executes by aggressively stepping
 - `polynomial_power` - Exponent for polynomial curve (default: 2.0 for quadratic)
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
-- `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode. 
+- `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
 
 ### Schedule Configuration
 
 - **Learning rate**: Warmup to constant (uses optimizer's initial lr) then decays to zero
-- **Batch size**: Polynomial curve from initial to final over total_steps, with direct warmup
-=
+- **Batch size**: Polynomial curve from initial to final over num_training_steps, with direct warmup
 ---
 
-## make_gnts_with_cosine_annealing_schedule 
+## make_gnts_with_cosine_annealing_schedule
 
 This implements a reactive system where the gradient quality is increased until the length of the gradient norm - which gets shorter as quality increases - is below a scheduled threshold. Then we step. Since this has the effect of directly regulating the length of the gradients, we omit the learning rate schedule.
 
@@ -106,8 +105,8 @@ Creates an OptimizerWrapperGNTS with LRSchedules implementing these processes tr
 ```python
 def make_gnts_with_cosine_annealing_schedule(
     optimizer: torch.optim.Optimizer,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     initial_threshold: float = 0.95,
     final_threshold: float = 0.25,
     warmup_multiplier: float = 10,
@@ -118,15 +117,14 @@ def make_gnts_with_cosine_annealing_schedule(
 
 ### Parameters
 
-- `optimizer` - Configured PyTorch optimizer. We will use it's learning rate and weight decay
-- `total_steps` - Total training steps
-- `warmup_steps` - Steps for warmup phase
-- `initial_threshold` - Threshold annealing starts at once inverse warmup is complete. 
+- `optimizer` - Configured PyTorch optimizer. We will use its learning rate and weight decay
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for warmup phase
+- `initial_threshold` - Threshold annealing starts at once inverse warmup is complete.
 - `final_threshold` - Ending gradient norm threshold at end of training
 - `warmup_multiplier` - This times initial threshold is where the inverse warmup starts at. Increase if the system does not step rapidly while in the warmup phase.
 - `max_batch_draws` - Maximum accumulation (default: 64)
-- `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode. 
-- 
+- `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 ### Schedule Configuration
 
 - **Learning rate**: Warmup to constant
@@ -134,9 +132,9 @@ def make_gnts_with_cosine_annealing_schedule(
 - **Weight decay**: Warmup to full, then cosine anneal to zero
 
 
-## make_gnts_with_cosine_annealing_schedule_conventional_lr 
+## make_gnts_with_cosine_annealing_schedule_conventional_lr
 
-This implements a reactive system where the gradient quality is increased until the length of the gradient norm - which gets shorter as quality increases - is below a scheduled threshold. Then we step. The cosine learning rate schedule is retained, eliminating any need for weight decay annealing. 
+This implements a reactive system where the gradient quality is increased until the length of the gradient norm - which gets shorter as quality increases - is below a scheduled threshold. Then we step. The cosine learning rate schedule is retained, eliminating any need for weight decay annealing.
 
 Creates an OptimizerWrapperGNTS with LRSchedules implementing these processes transparently for downstream objects.
 
@@ -145,8 +143,8 @@ Creates an OptimizerWrapperGNTS with LRSchedules implementing these processes tr
 ```python
 def make_gnts_with_cosine_annealing_schedule_conventional_lr(
     optimizer: torch.optim.Optimizer,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     initial_threshold: float = 0.95,
     final_threshold: float = 0.25,
     warmup_multiplier: float = 10,
@@ -157,10 +155,10 @@ def make_gnts_with_cosine_annealing_schedule_conventional_lr(
 
 ### Parameters
 
-- `optimizer` - Configured PyTorch optimizer. We will use it's learning rate and weight decay
-- `total_steps` - Total training steps
-- `warmup_steps` - Steps for warmup phase
-- `initial_threshold` - Threshold annealing starts at once inverse warmup is complete. 
+- `optimizer` - Configured PyTorch optimizer. We will use its learning rate and weight decay
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for warmup phase
+- `initial_threshold` - Threshold annealing starts at once inverse warmup is complete.
 - `final_threshold` - Ending gradient norm threshold at end of training
 - `warmup_multiplier` - This times initial threshold is where the inverse warmup starts at. Increase if the system does not step rapidly while in the warmup phase.
 - `max_batch_draws` - Maximum accumulation (default: 64)
@@ -178,6 +176,7 @@ def make_gnts_with_cosine_annealing_schedule_conventional_lr(
 The gradient norm rescaler class rescales the gradient norms to be a threshold size then immediately steps. The threshold is in turn scheduled, and this process directly controls the gradient length, omitting the need for a learning rate schedule. Since weight decay still needs to reduce, it is scheduled to cosine annealing instead decaying to zero. All properties undergo a normal warmup.
 
 Creates an OptimizerWrapperGNR with gradient norm rescaling and constant learning rate.
+
 ### Signature
 
 ```python
@@ -185,8 +184,8 @@ def make_gnr_with_cosine_annealing_schedule(
     optimizer: torch.optim.Optimizer,
     initial_norm: float,
     final_norm: float,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperGNR, LRSchedule]:
@@ -197,8 +196,8 @@ def make_gnr_with_cosine_annealing_schedule(
 - `optimizer` - Configured PyTorch optimizer
 - `initial_norm` - Starting target gradient norm
 - `final_norm` - Ending target gradient norm
-- `total_steps` - Total training steps
-- `warmup_steps` - Steps for warmup phase
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for warmup phase
 - `max_batch_draws` - Maximum accumulation (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
@@ -210,11 +209,48 @@ def make_gnr_with_cosine_annealing_schedule(
 
 ---
 
+## make_gnr_with_cosine_annealing_schedule_conventional_lr
+
+The gradient norm rescaler class rescales the gradient norms to be a threshold size then immediately steps. The threshold is in turn scheduled. This variant retains conventional cosine annealing learning rate schedule, eliminating the need for weight decay scheduling.
+
+Creates an OptimizerWrapperGNR with gradient norm rescaling and cosine annealing learning rate.
+
+### Signature
+
+```python
+def make_gnr_with_cosine_annealing_schedule_conventional_lr(
+    optimizer: torch.optim.Optimizer,
+    initial_norm: float,
+    final_norm: float,
+    num_training_steps: int,
+    num_warmup_steps: int,
+    max_batch_draws: int = 64,
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
+) -> Tuple[OptimizerWrapperGNR, LRSchedule]:
+```
+
+### Parameters
+
+- `optimizer` - Configured PyTorch optimizer
+- `initial_norm` - Starting target gradient norm
+- `final_norm` - Ending target gradient norm
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for warmup phase
+- `max_batch_draws` - Maximum accumulation (default: 64)
+- `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
+
+### Schedule Configuration
+
+- **Learning rate**: Warmup then cosine anneal to zero.
+- **Target gradient norm**: Cosine annealing from initial to final.
+
+---
+
 ## make_gns_with_cosine_annealing_schedule
 
-Allows the scheduling of the gradient noise scale response quality with cosine annealing and thus adjusted the batch size.
+Allows the scheduling of the gradient noise scale response quality with cosine annealing and thus adjust the batch size.
 
-The threshold is started high, using an inverse warmup, then comes down to the runtime value in inverse warmup. Then, it cosine anneals down to the final tolerance. This thus possesses an inverse response. A standard cosine annealing case, which anneals down to zero, is also attached. 
+The threshold is started high, using an inverse warmup, then comes down to the runtime value in inverse warmup. Then, it cosine anneals down to the final tolerance. This thus possesses an inverse response. A standard cosine annealing case, which anneals down to zero, is also attached.
 
 Creates an OptimizerWrapperGNS with cosine annealing noise tolerance.
 
@@ -225,8 +261,8 @@ def make_gns_with_cosine_annealing_schedule(
     optimizer: torch.optim.Optimizer,
     initial_tolerance: float,
     final_tolerance: float,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     warmup_multiplier: int = 10,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
@@ -238,8 +274,8 @@ def make_gns_with_cosine_annealing_schedule(
 - `optimizer` - Configured PyTorch optimizer
 - `initial_tolerance` - Starting noise-to-signal tolerance
 - `final_tolerance` - Ending noise-to-signal tolerance
-- `total_steps` - Total training steps
-- `warmup_steps` - Steps for warmup phase
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for warmup phase
 - `max_batch_draws` - Maximum accumulation (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
@@ -263,8 +299,8 @@ Creates an OptimizerWrapperGNS with default schedule configuration.
 def make_gns_default(
     optimizer: torch.optim.Optimizer,
     tolerance: float,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperGNS, LRSchedule]:
@@ -274,8 +310,8 @@ def make_gns_default(
 
 - `optimizer` - Configured PyTorch optimizer
 - `tolerance` - Noise-to-signal tolerance threshold
-- `total_steps` - Total training steps
-- `warmup_steps` - Steps for inverse warmup phase
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for inverse warmup phase
 - `max_batch_draws` - Maximum accumulation (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
@@ -298,8 +334,8 @@ def make_mht_with_warmup_schedule(
     optimizer: torch.optim.Optimizer,
     confidence_level: float,
     percent_error_threshold: float,
-    total_steps: int,
-    warmup_steps: int,
+    num_training_steps: int,
+    num_warmup_steps: int,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperMHT, LRSchedule]
@@ -310,8 +346,8 @@ def make_mht_with_warmup_schedule(
 - `optimizer` - Configured PyTorch optimizer
 - `confidence_level` - Target statistical confidence (e.g., 0.95 for 95%)
 - `percent_error_threshold` - Maximum acceptable confidence interval width
-- `total_steps` - Total training steps
-- `warmup_steps` - Steps for warmup phase
+- `num_training_steps` - Total training steps
+- `num_warmup_steps` - Steps for warmup phase
 - `max_batch_draws` - Maximum accumulation (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
