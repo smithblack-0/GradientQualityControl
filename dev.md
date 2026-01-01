@@ -16,7 +16,9 @@
 
 ## Document-Driven Development (DDD)
 
-Document-Driven Development is a contract-based methodology where **documentation is the design medium**. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications, then implement code to conform to those specifications.
+Document-Driven Development is a **contract-first development methodology** where documentation serves as the design medium. Instead of designing in code and documenting afterward, you design by writing Natural Language Formal Specifications (which may include formal mathematics when appropriate), then implement code to conform to those specifications.
+
+**Taxonomical classification:** Contract-first development, project-oriented (not lightweight - produces substantial documentation).
 
 ### Core Workflow
 
@@ -25,6 +27,71 @@ Documentation (Design) → Tests (Validation) → Implementation (Execution)
 ```
 
 **The key inversion:** Documentation defines what must be true, tests verify those properties hold, and implementation is constrained to satisfy both. Code cannot deviate from the contract without failing tests.
+
+### The Core Mechanism: Single-Level Abstraction
+
+**The fundamental principle that makes DDD work:**
+
+You **never work at more than one level of abstraction simultaneously**. Instead, you isolate related abstractions at the same level, document them together, then push lower-level concerns into future bounded contracts.
+
+**How this works in practice:**
+
+1. **During documentation**: Identify what abstraction level you're working at (e.g., "public optimizer interface")
+2. **Identify dependencies**: "This needs something that does X, Y, Z" - that's a lower abstraction level
+3. **Contract it out**: Define the interface/contract for that dependency, stub the behavior
+4. **Stay at your level**: Continue documenting at your current abstraction level
+5. **Later**: Fill in the lower-level contract (or assign to someone else)
+
+**During testing, this becomes:**
+- "I need something doing THESE functions and will verify my class uses them"
+- Create interface for the dependency
+- Test against that interface (dependency injection + black box testing)
+- Stub the dependency for now
+- Pass back to documentation team to fill in later
+
+**Key insight:** Documentation + Interfaces IS the specification. By including needed dependency behavior through dependency injection into black box testing contracts, you can slice off pieces of the problem and defer them.
+
+**Why this works:**
+- Each object/document contains things at the **same abstraction level**
+- Lower-level details become contracted stubs
+- Hierarchy starts at public interface, progressively deepens
+- You're always solving a bounded problem at one abstraction level
+- No cognitive overload from mixing abstraction levels
+
+**When this fails:**
+- Insisting on single objects instead of multiple abstraction layers
+- Not contracting out sub-roles as separate abstractions
+- Trying to work at multiple abstraction levels simultaneously
+- Mixing high-level architecture with low-level implementation details
+
+### Key Insights Enabling DDD
+
+These insights make DDD practical with modern technology:
+
+**1. Documentation strength enables code development**
+- Sufficiently strong documentation is sufficient specification for implementation
+- Documentation can progressively detail lower abstraction levels
+- Each level can be filled in independently
+
+**2. Architecture and code are opposing abstraction processes**
+- Writing consistent high-level architecture: abstract, conceptual, interface-focused
+- Writing concrete implementation code: detailed, specific, mechanism-focused
+- Trying to do both simultaneously creates cognitive overload and poor results
+- DDD separates these into sequential phases
+
+**3. Refactoring is easier when only documentation exists**
+- Before code exists, architectural changes are just text edits
+- Outside-in development (interface → implementation) prevents major architectural breakage
+- By the time you write code, architecture has been refined and validated
+
+**4. Modern LLMs can implement to Natural Language Formal Specifications**
+- This is the technological enabler that makes insights 1-3 practically exploitable
+- With LLMs, documentation CAN BE the specification (no separate formal spec language needed)
+- Implementation details abstract into successively deeper backend documentation
+- Each layer has public contracts validated by black box tests
+- LLMs excel at "implement to spec" but struggle with "design the spec"
+
+**Result:** Human designers work at the abstraction/architecture level (their strength), LLMs/juniors work at the implementation level (bounded problem-solving), and the methodology ensures they integrate seamlessly.
 
 ### Why DDD Works
 
@@ -164,18 +231,22 @@ If documentation and testing were done correctly, implementation should be **mec
 
 ### When to Use DDD
 
-**Good fit:**
+DDD is **project-oriented** and produces substantial documentation. It's not "lightweight" - expect to write significant documentation mass.
+
+**Excellent fit:**
+- **Building tools and libraries** - Clear contracts, stable interfaces, reusable components
 - Stable or well-understood requirements
-- Projects needing parallel development
+- Projects needing parallel development (distributed teams, LLM assistance)
 - Code that will be maintained long-term
-- When architecture quality matters
-- Working with LLMs or distributed teams
+- When architecture quality matters more than speed-to-first-prototype
+- Complex systems requiring multiple abstraction layers
 
 **Poor fit:**
-- Rapidly changing requirements (contracts invalidate quickly)
-- Throwaway prototypes
-- Exploratory research code
-- Very small projects (overhead not worth it)
+- Rapidly changing requirements (contracts invalidate quickly, wasted documentation effort)
+- Throwaway prototypes or exploratory code
+- Research code where you're discovering what to build
+- Very small single-file projects (overhead not justified)
+- Projects that don't naturally decompose into multiple abstraction layers
 
 ### Practical Notes
 
