@@ -127,25 +127,25 @@ To build a measurement, we first need a mathematical framework for how noise beh
 
 At training step $t$, we model each minibatch gradient as a random draw from a multivariate Gaussian distribution:
 
-$$G_{tn} = \nabla L_t(P_n) \sim \mathcal{N}(\boldsymbol{\mu}_t, \boldsymbol{\Sigma}_t)$$
+$$G_{tn} = \nabla L_t(P_n) \sim \mathcal{N}(\mu_t, \Sigma_t)$$
 
-Here $\boldsymbol{\mu}_t$ represents the true mean gradient over the training distribution, $\boldsymbol{\Sigma}_t$ captures the batch-to-batch covariance, and $n$ indexes individual batch draws.
+Here $\mu_t$ represents the true mean gradient over the training distribution, $\Sigma_t$ captures the batch-to-batch covariance, and $n$ indexes individual batch draws.
 
 When we average $N$ independent gradient samples, standard Gaussian statistics gives:
 
-$$\bar{G}_t = \frac{1}{N} \sum_{n=1}^{N} G_{tn} \sim \mathcal{N}\left(\boldsymbol{\mu}_t, \frac{\boldsymbol{\Sigma}_t}{N}\right)$$
+$$\bar{G}_t = \frac{1}{N} \sum_{n=1}^{N} G_{tn} \sim \mathcal{N}\left(\mu_t, \frac{\Sigma_t}{N}\right)$$
 
 The covariance scales as $1/N$. Informally speaking, the noise has mean zero and so vanishes over infinite samples - only signals that consistently point in the same direction express themselves in the mean.
 
 ### The Measurement Problem
 
-In theory, the ideal measurement would be straightforward: compute the true mean gradient $\boldsymbol{\mu}_t$, then measure the similarity (perhaps via cosine similarity or Euclidean distance) between our current gradient estimate and this true value. This approach has an obvious problem: we cannot compute $\boldsymbol{\mu}_t$ during training. Computing the true mean would require evaluating gradients across the entire training distribution, which is exactly what we're trying to avoid by using minibatches in the first place. However, there is an approach which is viable in high-noise regimes. When the covariance matrix tends to be much larger than the mean, taking a mean of errors tends to make the length of the individual vectors shrink! This means the mean gradient norm is usable as a detection mechanism, and the ratio of the original to final gradient norm roughly bounds the error.
+In theory, the ideal measurement would be straightforward: compute the true mean gradient $\mu_t$, then measure the similarity (perhaps via cosine similarity or Euclidean distance) between our current gradient estimate and this true value. This approach has an obvious problem: we cannot compute $\mu_t$ during training. Computing the true mean would require evaluating gradients across the entire training distribution, which is exactly what we're trying to avoid by using minibatches in the first place. However, there is an approach which is viable in high-noise regimes. When the covariance matrix tends to be much larger than the mean, taking a mean of errors tends to make the length of the individual vectors shrink! This means the mean gradient norm is usable as a detection mechanism, and the ratio of the original to final gradient norm roughly bounds the error.
 
 ### The Tractability Problem
 
 We've identified an observable signal - averaging gradients reduces their expected magnitude. But we still need to formalize this into something computable that quantifies signal quality.
 
-We cannot directly compute a signal-to-noise ratio (SNR) because we don't have access to the true signal $\boldsymbol{\mu}_t$ or the noise covariance $\boldsymbol{\Sigma}_t$. However, we can bound the SNR using quantities that are measurable during training: the expected single-batch gradient norm and the norm of averaged gradients.
+We cannot directly compute a signal-to-noise ratio (SNR) because we don't have access to the true signal $\mu_t$ or the noise covariance $\Sigma_t$. However, we can bound the SNR using quantities that are measurable during training: the expected single-batch gradient norm and the norm of averaged gradients.
 
 Define the **Gradient Magnitude Ratio (GMR)** at step $t$ as:
 
