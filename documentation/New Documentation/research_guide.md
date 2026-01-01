@@ -170,3 +170,9 @@ To accommodate both necessary conditions, we can use a controller based on gradi
 The control theory becomes straightforward: set a gradient norm threshold and accumulate batches until the mean gradient norm drops below it. This is exactly what the GNTS controller does.  By scheduling this threshold over training, we directly control the effort-quality tradeoff - higher thresholds early (more steps, higher noise) and lower thresholds late (cleaner gradients). This even entirely replaces learning rate scheduling, as it directly controls the relevant gradient feature - step size - that we were controlling implicitly through learning rate schedules.
 
 The gradient norm directly encodes noise level through the cancellation mechanism - it is not an arbitrary heuristic but a measurement associated with the quantity we care about. It is packaged in a way that lets us demand more quality according to a schedule. It also provides a reactive mechanism to noise, as norm spikes are responded to by drawing extra batches instead, and keeps per-parameter gradient variance consistent which is optimal for optimizers such as Adam.
+
+# Open Questions
+
+* What does the late-phase convergence behavior look like? Has the issue been corrected now that weight decay is removed?
+* What is going on in Adam's step size? Do other optimizer variants, like Shampoo or K-FAC, that need really clean gradients do better using this system?
+* Can we develop a more thorough probe of ideal hyperparameter behavior with increasing number of tokens? With scale? 
