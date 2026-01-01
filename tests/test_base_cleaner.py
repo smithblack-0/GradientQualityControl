@@ -636,21 +636,24 @@ class TestSubclassOptimizerStepContract:
 
         initial_value = param.data.clone()
 
-        # Simulate 3 batches with gradients [2.0], [4.0], [6.0]
-        # Sum = 12.0, Mean = 4.0
-        param.grad = torch.tensor([2.0])
-        optimizer.step()  # Batch 1, accumulates
-
-        param.grad = torch.tensor([4.0])
-        optimizer.step()  # Batch 2, accumulates
-
+        # Simulate PyTorch's gradient accumulation behavior
+        # Each backward() ADDS to .grad, doesn't replace it
+        # Use same gradient value [6.0] for each batch for simplicity
         param.grad = torch.tensor([6.0])
-        optimizer.step()  # Batch 3, should step now
+        optimizer.step()  # Batch 1, num_draws=1, grad_sum=6.0
 
-        # With lr=1.0 and SGD, update is: param = param - lr * grad
-        # If using MEAN: param = 10.0 - 1.0 * 4.0 = 6.0 ✓
-        # If using SUM:  param = 10.0 - 1.0 * 12.0 = -2.0 ✗
-        expected_value = initial_value - 1.0 * 4.0  # Mean of gradients
+        # PyTorch accumulates - add to existing grad
+        param.grad = param.grad + torch.tensor([6.0])  # grad_sum=12.0
+        optimizer.step()  # Batch 2, num_draws=2
+
+        param.grad = param.grad + torch.tensor([6.0])  # grad_sum=18.0
+        optimizer.step()  # Batch 3, num_draws=3, should step now
+
+        # After 3 batches: grad_sum=18.0, mean=6.0
+        # With lr=1.0 and SGD, update is: param = param - lr * grad_mean
+        # If using MEAN: param = 10.0 - 1.0 * 6.0 = 4.0 ✓
+        # If using SUM:  param = 10.0 - 1.0 * 18.0 = -8.0 ✗
+        expected_value = initial_value - 1.0 * 6.0  # Mean of accumulated gradients
 
         assert torch.allclose(param.data, expected_value), \
             f"Expected {expected_value}, got {param.data}. Gradients may not be averaged."
@@ -719,8 +722,8 @@ class TestSubclassOptimizerStepContract:
         assert stats["last_num_draws"] == 4
         assert stats["num_draws"] == 0  # Reset after step
 
-    def test_take_optimizer_step_computes_and_stores_grad_norm(self):
-        """_take_optimizer_step() computes L2 norm and stores in last_grad_norm."""
+    def test_take_optimizer_step_updates_last_grad_norm(self):
+        """_take_optimizer_step() updates last_grad_norm property with gradient information."""
         model, base_optimizer = create_simple_model_and_base_optimizer()
         optimizer = MinimalTestOptimizer(base_optimizer, step_every=1)
 
