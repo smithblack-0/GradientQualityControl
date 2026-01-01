@@ -50,11 +50,13 @@ Then you are currently unsupported and would have to implement your own algorith
 
 If you are a researcher interested in this line of reseearch, it is recommended to consult first the [Research Guide](research_guide.md) which will provide commentary about the entire line of research, then the [User Guide](user_guide.md) which will discuss how the library is implemented, and [Optimizer Wrapper API](optimizer_wrapper_api.md) for underlying details of the algorithms.
 
-## Getting Started 
+## Getting Started
+
+GNTS automatically tunes batch size during training by accumulating gradients based on their quality. The factory configures all schedules - just swap your optimizer initialization and train normally.
 
 This algorithm is continuously maintained as the example of the most productive implementation yet discovered. It has last been updated on 12/28/2025
 
-Getting started with GQC is straightforward. 
+Getting started with GQC is straightforward.
 
 First, install the library from PyPi
 
@@ -62,7 +64,9 @@ First, install the library from PyPi
 pip install torch-gqc
 ```
 
-Now, suppose we have a classical learning loop, something like
+### Basic Usage
+
+Suppose we have a classical learning loop, something like
 
 ```python
 train_loader = get_train_loader(batch_size = 64)
@@ -81,7 +85,7 @@ for inputs, labels in train_loader:
     scheduler.step()
 ```
 
-The Gradient Norm Theshold Scheduling algorithm instead attempts to directly tune the ideal batch size using gradient accumulation. This involves several manipulations under the hood and is implemented as a function returning an optimizer wrapper and a schedule. The optimizer and schedules themselves implement all standard fields, and the optimizer passes through methods to the wrapped object. For this reason, this is composable with any existing optimizer and with the majority of frameworks.
+The Gradient Norm Threshold Scheduling algorithm instead attempts to directly tune the ideal batch size using gradient accumulation. This involves several manipulations under the hood and is implemented as a function returning an optimizer wrapper and a schedule. The optimizer and schedules themselves implement all standard fields, and the optimizer passes through methods to the wrapped object. For this reason, this is composable with any existing optimizer and with the majority of frameworks.
 
 ```python
 from gradient_quality_control import OptimizerWrapperGNTS, make_gnts_with_cosine_annealing_schedule
@@ -105,15 +109,19 @@ for inputs, labels in train_loader:
     schedule.step()
 ```
 
-Under the hood, this is implementing a ScheduleAnything schedule that sets the "gradient_norm_threshold" to follow a curve, from 0.95 to 0.25 by default. The system then accumulated gradients until the gradient norm is *below* this threshold. It should be kept in mind **lower numbers are more restrictive**. and the exact values can be edited. Please also keep in mind that due to lower numbers being more restrictive this uses an **inverse warmup** when controlling the norm threshold, though it uses a normal warmup for weight decay and loss. Setting these values explicitly, observe the following:
+Under the hood, this is implementing a ScheduleAnything schedule that sets the "gradient_norm_threshold" to follow a curve, from 0.95 to 0.25 by default. The system then accumulated gradients until the gradient norm is *below* this threshold. It should be kept in mind **lower numbers are more restrictive**. and the exact values can be edited. Please also keep in mind that due to lower numbers being more restrictive this uses an **inverse warmup** when controlling the norm threshold, though it uses a normal warmup for weight decay and loss.
+
+### Custom Parameters
+
+Setting threshold values explicitly, observe the following:
 
 ```python
-from gradient_quality_control import OptimizerWrapperGNTS, get_gnts_optimizer_and_cosine_schedule
+from gradient_quality_control import OptimizerWrapperGNTS, make_gnts_with_cosine_annealing_schedule
 
 ...
 train_loader = get_train_loader(batch_size = 8)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-optimizer, schedule = get_gnts_optimizer_and_cosine_schedule(optimizer, 
+optimizer, schedule = make_gnts_with_cosine_annealing_schedule(optimizer,
                                                              num_warmup_steps = 500,
                                                              num_training_steps = 10000,
                                                              norm_warmup_target=0.95, # Default value
@@ -132,15 +140,17 @@ for inputs, labels in train_loader:
     schedule.step()
 ```
 
+### Monitoring with Statistics
+
 A wide variety of control statistics are also available by means of the statistics method, and a set of well-chosen vital statistics relevant to the optimizer and suitable for tqdm display or logging are available through .vital_statistics()
 
 ```python
-from gradient_quality_control import OptimizerWrapperGNTS, get_gnts_optimizer_and_cosine_schedule
+from gradient_quality_control import OptimizerWrapperGNTS, make_gnts_with_cosine_annealing_schedule
 
 ...
 train_loader = get_train_loader(batch_size = 8)
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-optimizer, schedule = get_gnts_optimizer_and_cosine_schedule(optimizer, 
+optimizer, schedule = make_gnts_with_cosine_annealing_schedule(optimizer,
                                                              num_warmup_steps = 500,
                                                              num_training_steps = 10000,
                                                              norm_warmup_target=0.95,
@@ -163,4 +173,33 @@ for inputs, labels in train_loader:
     pbar.set_postfix(vital_statistics)
 ```
 
-Consider consulting the production guide if needed, or the api guide, if more information on how to control the system is requested. Overall, however, you can think as the norm threshold as a quality demand. Lower threshold requests higher quality gradients.
+### Distributed Training
+
+For distributed training with DDP or FSDP, explicitly set the `distributed_mode` parameter:
+
+```python
+from gradient_quality_control import make_gnts_with_cosine_annealing_schedule
+
+# For DDP (Data Parallel) - use "replicated"
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+optimizer, schedule = make_gnts_with_cosine_annealing_schedule(
+    optimizer,
+    num_warmup_steps=500,
+    num_training_steps=10000,
+    distributed_mode="replicated"  # For DDP
+)
+
+# For FSDP (Fully Sharded Data Parallel) - use "sharded"
+optimizer, schedule = make_gnts_with_cosine_annealing_schedule(
+    optimizer,
+    num_warmup_steps=500,
+    num_training_steps=10000,
+    distributed_mode="sharded"  # For FSDP
+)
+```
+
+The rest of the training loop remains identical to the basic usage example.
+
+---
+
+Consider consulting the production guide if needed, or the api guide, if more information on how to control the system is requested. Overall, however, you can think of the norm threshold as a quality demand. Lower threshold requests higher quality gradients.
