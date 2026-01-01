@@ -5,7 +5,7 @@
 - **[User Guide](user_guide.md)** - Usage patterns and concepts
 - **[Wrapper Factories API Guide](api_guide.md)** - Convenience factory functions
 - **[Research Guide](research_guide.md)** - Research background and theory
-- **[README](New Readme.md)** - Installation and quick start
+- **[README](../New%20Readme.md)** - Installation and quick start
 
 ---
 

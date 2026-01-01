@@ -16,7 +16,7 @@ This guide provides commentary on the research line and design decisions behind 
 
 ## Navigation
 
-- **[README](New Readme.md)** - Installation and quick start
+- **[README](../New%20Readme.md)** - Installation and quick start
 - **[User Guide](user_guide.md)** - Usage patterns and library overview
 - **[Optimizer Wrapper API](optimizer_wrapper_api.md)** - Detailed wrapper specifications
 - **[Wrapper Factories API Guide](api_guide.md)** - Pre-configured factory functions
