@@ -1,7 +1,6 @@
 # Internal Utilities
 
-Internal utility functions for GradientQualityControl. These are not part of the public API and are used by optimizer wrapper implementations.
-
+Internal utility functions for GradientQualityControl. These are not part of the public API and are used by optimizer wrapper implementations. These can 
 ---
 
 ## compute_grad_norm_from_optimizer
@@ -49,23 +48,7 @@ def compute_grad_norm_from_optimizer(optimizer: torch.optim.Optimizer) -> float
 - Must extract gradient tensors explicitly
 - Uses PyTorch's `torch.nn.utils.clip_grad_norm_()` utility for correct norm calculation
 
-### Usage Example
+## compute_distributed_metric
 
-```python
-# After backward pass
-loss.backward()
 
-# Compute gradient norm
-grad_norm = compute_grad_norm_from_optimizer(optimizer)
 
-# Use in control decision
-if grad_norm <= threshold:
-    optimizer._take_optimizer_step()
-```
-
-### Implementation Notes
-
-This utility is internal to GradientQualityControl and not exposed in the public API. It exists to:
-1. Prevent code duplication across GNTS, GNR, and GNS
-2. Ensure gradient norm computation is always correct
-3. Centralize the critical detail of extracting gradients (not parameters)
