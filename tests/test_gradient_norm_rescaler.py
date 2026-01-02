@@ -306,6 +306,29 @@ class TestScheduleIntegration:
         assert result is True
 
 
+# =============================================================================
+# Suite 6: Statistics Smoke Tests
+# =============================================================================
+
+
+class TestStatisticsSmoke:
+    """Smoke tests to verify statistics methods work (details tested in base class)."""
+
+    def test_statistics_returns_dict(self):
+        """statistics() method exists and returns dict."""
+        model = create_simple_model()
+        optimizer, scheduler = create_optimizer_with_schedule(model, target_gradient_norm=1.0)
+
+        stats = optimizer.statistics()
+        assert isinstance(stats, dict)
+
+    def test_vital_statistics_returns_dict(self):
+        """vital_statistics() method exists and returns dict."""
+        model = create_simple_model()
+        optimizer, scheduler = create_optimizer_with_schedule(model, target_gradient_norm=1.0)
+
+        vital_stats = optimizer.vital_statistics()
+        assert isinstance(vital_stats, dict)
 
 
 if __name__ == "__main__":

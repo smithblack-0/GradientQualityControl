@@ -310,6 +310,33 @@ class TestScheduleIntegration:
         assert isinstance(result, bool)
 
 
+# =============================================================================
+# Suite 4: Statistics Smoke Tests
+# =============================================================================
+
+
+class TestStatisticsSmoke:
+    """Smoke tests to verify statistics methods work (details tested in base class)."""
+
+    def test_statistics_returns_dict(self):
+        """statistics() method exists and returns dict."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
+        )
+
+        stats = optimizer.statistics()
+        assert isinstance(stats, dict)
+
+    def test_vital_statistics_returns_dict(self):
+        """vital_statistics() method exists and returns dict."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
+        )
+
+        vital_stats = optimizer.vital_statistics()
+        assert isinstance(vital_stats, dict)
 
 
 if __name__ == "__main__":
