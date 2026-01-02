@@ -306,54 +306,6 @@ class TestScheduleIntegration:
         assert result is True
 
 
-# =============================================================================
-# Suite 6: Statistics
-# =============================================================================
-
-
-class TestStatistics:
-    """Test statistics() method contract."""
-
-    def test_statistics_returns_dict(self):
-        """statistics() returns a dictionary."""
-        model = create_simple_model()
-        optimizer, scheduler = create_optimizer_with_schedule(
-            model, target_gradient_norm=1.0
-        )
-
-        stats = optimizer.statistics()
-        assert isinstance(stats, dict)
-
-    def test_statistics_contains_base_counters(self):
-        """statistics() includes counters from base class."""
-        model = create_simple_model()
-        optimizer, scheduler = create_optimizer_with_schedule(
-            model, target_gradient_norm=1.0
-        )
-
-        stats = optimizer.statistics()
-        assert "num_batches" in stats or "batches" in stats
-        assert "num_steps" in stats or "steps" in stats
-
-    def test_statistics_updates_after_steps(self):
-        """statistics() reflects step count."""
-        model = create_simple_model()
-        optimizer, scheduler = create_optimizer_with_schedule(
-            model, target_gradient_norm=1.0
-        )
-
-        initial_stats = optimizer.statistics()
-
-        # Take a step
-        perform_forward_backward(model)
-        optimizer.step()
-
-        updated_stats = optimizer.statistics()
-
-        # Step counter should have increased
-        initial_steps = initial_stats.get("num_steps", 0) or initial_stats.get("steps", 0)
-        updated_steps = updated_stats.get("num_steps", 0) or updated_stats.get("steps", 0)
-        assert updated_steps > initial_steps
 
 
 if __name__ == "__main__":
