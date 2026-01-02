@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.3
+
+**Factory Function Test Coverage**
+
+- Added comprehensive factory tests for all 9 factory functions across 5 optimizer wrappers:
+  - `make_sbc_with_polynomial_schedule` and `make_sbc_with_polynomial_schedule_conventional_lr` (SBC)
+  - `make_gnts_with_cosine_annealing_schedule` and `make_gnts_with_cosine_annealing_schedule_conventional_lr` (GNTS)
+  - `make_gnr_with_cosine_annealing_schedule` and `make_gnr_with_cosine_annealing_schedule_conventional_lr` (GNR)
+  - `make_gns_with_cosine_annealing_schedule` and `make_gns_default` (GNS)
+  - `make_mht_with_warmup_schedule` (MHT)
+- Tests validate return types (OptimizerWrapper, SynchronousSchedule)
+- Tests verify schedule values match ScheduleAnything builtin formulas at key training steps
+- Tests confirm wrapper configuration parameters (max_batch_draws, distributed_mode)
+- All factory tests follow black box methodology with no inline imports
+
 ## 0.9.2
 
 **Test Infrastructure Rewrite (Black Box Methodology)**
@@ -14,11 +29,6 @@
   - Child tests focus on optimizer-specific behavior only
 - Added minimal statistics smoke tests to verify API exists
 - Fixed all import paths and terminology (optimizer/base_optimizer, never "wrapper")
-- Added comprehensive factory tests for all 10 factory functions across 5 optimizer wrappers:
-  - Tests validate return types (OptimizerWrapper, SynchronousSchedule)
-  - Tests verify schedule values match ScheduleAnything builtin formulas at key training steps
-  - Tests confirm wrapper configuration parameters (max_batch_draws, distributed_mode)
-  - All factory tests follow black box methodology with no inline imports
 
 ## 0.9.1
 
