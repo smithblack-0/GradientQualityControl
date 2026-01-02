@@ -6,6 +6,36 @@
 - Complete rebuild of all documentation.
 - Onto library rebuild
 
+### Testing Infrastructure Updates
+
+**Base Class API Updates:**
+- Added `distributed_mode` parameter to base class for distributed training support (replicated/sharded modes)
+- Updated `step()` signature to accept `*args, **kwargs` for algorithms requiring additional inputs (e.g., MHT metric)
+- Fixed terminology throughout: "Implementation Pattern" → "Subclassing Pattern" (contracts document subclassing, not implementation)
+- Added internal utilities documentation for shared gradient norm computation
+
+**Test Suite Rewrite (Black Box Methodology):**
+- Completely rewrote all 5 optimizer wrapper test suites (SBC, GNTS, GNR, MHT, GNS)
+- Migrated from Mock-based testing to real PyTorch optimizers
+- Integrated ScheduleAnything for proper schedule target binding
+- Tests now validate documented contracts only, never implementation details
+- Removed duplicate functionality following DRY/SOLID principles:
+  - Statistics testing delegated to base class tests
+  - Gradient accumulation testing delegated to base class tests
+  - Child tests focus on optimizer-specific behavior only
+- Added minimal statistics smoke tests to verify API exists
+- Fixed all import paths and terminology (optimizer/base_optimizer, never "wrapper")
+
+**OptimizerWrapperGNR Contract Update:**
+- Added `mode` parameter: "global" (default) or "independent" scaling modes
+- Global mode: computes norm across all parameters, scales uniformly
+- Independent mode: scales each parameter to target norm separately
+
+**Base Class Test Updates:**
+- Added tests for `distributed_mode` parameter validation
+- Added tests for `step()` signature flexibility with `*args, **kwargs`
+- Validation tests ensure only valid distributed modes accepted ("replicated", "sharded", None)
+
 ## 0.8.6
 
 - Bugfix: Optimizer wrapper did not actually behave like wrapped optimizer. Fixed.
