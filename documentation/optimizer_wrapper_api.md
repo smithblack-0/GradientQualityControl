@@ -139,9 +139,9 @@ def step(self) -> bool
 
 ## OptimizerWrapperGNR
 
-A *control* wrapper which always steps, but also rescales the gradients to a constant scale during all steps before doing so. It exposes "weight_decay", "gradient_norm_target", and "lr" for scheduling. When used, it looks up the current gradient norm target, figures out the gradient norm, then rescales all gradients to that norm. It then immediately steps and zeros the gradients in the optimizer. 
+A *control* wrapper which always steps, but also rescales the gradients to a constant scale during all steps before doing so. It exposes "weight_decay", "gradient_norm_target", and "lr" for scheduling. When used, it looks up the current gradient norm target, figures out the gradient norm, then rescales all gradients to that norm. It then immediately steps and zeros the gradients in the optimizer.
 
-Usage is estimated to be best as learning rate to constant warmup, weight decay to warmup then cosine annealing, and cosine annealing of norm. This is because it replaces learning rate scheduling by directly controlling the length of the gradient instead. 
+Usage is estimated to be best as learning rate to constant warmup, weight decay to warmup then cosine annealing, and cosine annealing of norm. This is because it replaces learning rate scheduling by directly controlling the length of the gradient instead.
 
 Used to isolate how much gain comes from more consistent gradient lengths, which has synergetic effects with Adam optimizers and optimizers with second-moment curvature estimation.
 
@@ -155,6 +155,7 @@ def __init__(
     optimizer: torch.optim.Optimizer,
     max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
+    mode: Literal["global", "independent"] = "global"
 )
 ```
 
@@ -164,6 +165,7 @@ where
 - `optimizer` - Configured PyTorch optimizer to wrap
 - `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
 - `distributed_mode` - One of "replicated", "sharded". Replicated is used for data parallel processes like DDP, while sharded for model parallel processes. These influence how to merge metrics.
+- `mode` - Scaling mode: "global" computes norm across all parameters and scales uniformly, "independent" scales each parameter to target norm separately (default: "global")
 
 ### Schedule Targets
 
