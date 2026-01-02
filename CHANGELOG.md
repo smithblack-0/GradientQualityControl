@@ -14,6 +14,11 @@
   - Child tests focus on optimizer-specific behavior only
 - Added minimal statistics smoke tests to verify API exists
 - Fixed all import paths and terminology (optimizer/base_optimizer, never "wrapper")
+- Added comprehensive factory tests for all 10 factory functions across 5 optimizer wrappers:
+  - Tests validate return types (OptimizerWrapper, SynchronousSchedule)
+  - Tests verify schedule values match ScheduleAnything builtin formulas at key training steps
+  - Tests confirm wrapper configuration parameters (max_batch_draws, distributed_mode)
+  - All factory tests follow black box methodology with no inline imports
 
 ## 0.9.1
 
