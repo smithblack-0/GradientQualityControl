@@ -17,14 +17,12 @@ This enables architecture to emerge from constraints rather than guesswork. Trad
 DDD emerged from optimizing for a specific set of constraints present in modern software development with LLM assistance:
 
 **Given constraints:**
-- **Implementation is cheap but dumb** - LLMs and junior developers can implement to specification mechanically, but require clear bounded contracts
+- **Implementation is cheap but dumb** - LLMs and junior developers can implement to specification mechanically, but require clear bounded contracts. However, issues with contracts are very expensive.
 - **Testing is smarter but still dumb** - LLMs can write tests from specifications, but need human auditing for judgment calls about what APIs are needed. Human review of first-pass API identification and tests is almost always required
-- **Design is required, slow, and manual** - Quality design requires human thought and domain expertise, cannot be fully automated. In DDD, documentation mirrors design so they become the same artifact, omitting the traditional separation between design documents and implementation documentation
+- **Design is required, slow, and manual** - Quality design requires human thought and domain expertise, cannot be fully automated.
 - **Auditing is needed with human feedback** - Any LLM artifact requires human review. However, reviewing documentation to verify completeness and consistency is much faster than reviewing code implementation
 
-DDD optimizes for these constraints by concentrating expensive human effort (documentation and auditing) where it provides maximum value, while automating cheap mechanical work (implementation and testing). The key insight: since documentation is required anyway, make it the primary reviewable artifact. Natural language contracts are vastly more auditable than implementation code - you can verify an LLM hit all requirements by reading the documentation, rather than tracing through code paths.
-
-The role hierarchy (Implementer → Tester → Designer → Auditor) reflects increasing judgment requirements and decreasing automation potential, matching work to appropriate cost/capability levels.
+DDD optimizes for these constraints by concentrating expensive human effort (documentation and auditing) where it provides maximum value, while automating cheap mechanical work (implementation and testing). Every role usually does some level of auditing, but we take advantage of a key insight: since documentation is required anyway, make it the primary reviewable artifact, then compile code to it, and you can automate away a lot of the effort. Strengthening this to  Natural language contracts with clean api breaks and delegated responsibilities then vastly accelerates auditing and allows dispatch of testing and implementation tasks, with guidance, to juniors or LLMs. Auditing then concentrates on ensuring the documentation is consistant, and artifacts are produced to specification.
 
 ### Workflow
 
