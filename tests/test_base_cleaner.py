@@ -40,11 +40,11 @@ class MinimalTestOptimizer(AbstractOptimizerWrapper):
     """
 
     def __init__(self, base_optimizer: torch.optim.Optimizer, max_draws: int = 64,
-                 step_every: int = 1):
-        super().__init__(base_optimizer, max_draws)
+                 step_every: int = 1, distributed_mode: Optional[str] = None):
+        super().__init__(base_optimizer, max_draws, distributed_mode)
         self.step_every = step_every
 
-    def step(self) -> bool:
+    def step(self, *args, **kwargs) -> bool:
         """Step every N batches where N is step_every."""
         self._batch_received()
 
@@ -57,15 +57,16 @@ class MinimalTestOptimizer(AbstractOptimizerWrapper):
 class StatefulTestOptimizer(AbstractOptimizerWrapper):
     """Test optimizer that uses set_state/get_state for testing state management."""
 
-    def __init__(self, base_optimizer: torch.optim.Optimizer, max_draws: int = 64):
-        super().__init__(base_optimizer, max_draws)
+    def __init__(self, base_optimizer: torch.optim.Optimizer, max_draws: int = 64,
+                 distributed_mode: Optional[str] = None):
+        super().__init__(base_optimizer, max_draws, distributed_mode)
 
         # Test all three flag types
         self.set_state("vital_metric", 0.0, "vital")
         self.set_state("optional_metric", 0.0, "optional")
         self.set_state("threshold", 1.0, "optimizer")
 
-    def step(self) -> bool:
+    def step(self, *args, **kwargs) -> bool:
         """Simple stepping logic for testing."""
         self._batch_received()
 
@@ -910,6 +911,82 @@ class TestSubclassStateManagement:
 
         lr_min = optimizer.get_state("lr", aggregate_behavior="min")
         assert lr_min == 0.1
+
+    def test_distributed_mode_none_by_default(self):
+        """distributed_mode is None when not specified in constructor."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer)
+
+        distributed_mode = optimizer.get_state("distributed_mode")
+        assert distributed_mode is None
+
+    def test_distributed_mode_replicated_accepted(self):
+        """distributed_mode='replicated' is accepted and stored."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer, distributed_mode="replicated")
+
+        distributed_mode = optimizer.get_state("distributed_mode")
+        assert distributed_mode == "replicated"
+
+    def test_distributed_mode_sharded_accepted(self):
+        """distributed_mode='sharded' is accepted and stored."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer, distributed_mode="sharded")
+
+        distributed_mode = optimizer.get_state("distributed_mode")
+        assert distributed_mode == "sharded"
+
+    def test_distributed_mode_invalid_value_rejected(self):
+        """distributed_mode with invalid value is rejected."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+
+        with pytest.raises((ValueError, TypeError)):
+            MinimalTestOptimizer(base_optimizer, distributed_mode="invalid")
+
+
+# =============================================================================
+# Suite 7: Public API - Step Signature
+# =============================================================================
+
+
+class TestStepSignature:
+    """Test step() method signature flexibility."""
+
+    def test_step_accepts_no_arguments(self):
+        """step() can be called with no arguments."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer, step_every=1)
+
+        # Should not raise
+        result = optimizer.step()
+        assert isinstance(result, bool)
+
+    def test_step_accepts_positional_arguments(self):
+        """step() can accept positional arguments (for wrappers like MHT)."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer, step_every=1)
+
+        # Should not raise - args are ignored by MinimalTestOptimizer
+        result = optimizer.step(0.5, 1.2)
+        assert isinstance(result, bool)
+
+    def test_step_accepts_keyword_arguments(self):
+        """step() can accept keyword arguments."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer, step_every=1)
+
+        # Should not raise - kwargs are ignored by MinimalTestOptimizer
+        result = optimizer.step(metric=0.5, debug=True)
+        assert isinstance(result, bool)
+
+    def test_step_accepts_mixed_arguments(self):
+        """step() can accept both positional and keyword arguments."""
+        _, base_optimizer = create_simple_model_and_base_optimizer()
+        optimizer = MinimalTestOptimizer(base_optimizer, step_every=1)
+
+        # Should not raise
+        result = optimizer.step(0.5, metric=1.2, debug=False)
+        assert isinstance(result, bool)
 
 
 if __name__ == "__main__":
