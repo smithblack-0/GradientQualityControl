@@ -126,27 +126,31 @@ The parent constructor sets up the base wrapper infrastructure. When your subcla
 The optimizer parameter should be a fully-configured PyTorch optimizer (Adam, SGD, etc.) with learning rate, weight decay, and other hyperparameters already set. The wrapper doesn't modify optimizer configuration - it just wraps it for gradient accumulation control.
 
 ```python
-def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int = 64)
+def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int = 64, distributed_mode: Optional[Literal["replicated", "sharded"]] = None)
 ```
 
 **Parameters:**
 - `optimizer` (torch.optim.Optimizer) - Configured PyTorch optimizer to wrap
 - `max_draws` (int = 64) - Maximum batches that can accumulate before forcing a step. Must be ≥ 1.
+- `distributed_mode` (Optional[Literal["replicated", "sharded"]] = None) - Distributed training mode for metric aggregation. Stored for subclass use via `get_state("distributed_mode")`. Replicated mode is for data-parallel (DDP), sharded mode is for model-parallel. Stored as optional state.
 
 **Initializes:**
 - Wraps the optimizer for transparent delegation
 - Initializes counters: `num_batches=0`, `num_steps=0`, `num_draws=0`
 - Stores `max_draws` as safety bound
+- Stores `distributed_mode` as optional state (accessible via `get_state("distributed_mode")`)
 
 **Subclass Implementation Pattern:**
 ```python
 class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
-    def __init__(self, optimizer, max_draws, threshold):
-        super().__init__(optimizer, max_draws)  # Call parent first
+    def __init__(self, optimizer, max_draws=64, distributed_mode=None):
+        super().__init__(optimizer, max_draws, distributed_mode)  # Call parent first
 
         # Now initialize subclass-specific state
-        self.set_state("gradient_norm_threshold", threshold, "vital")
-        self.set_state("last_grad_norm", None, "optional")
+        self.set_state("gradient_norm_threshold", 1.0, "optimizer")  # Schedulable
+
+        # Subclass can access distributed_mode via get_state()
+        # distributed_mode = self.get_state("distributed_mode")
 ```
 
 ### step (Abstract)
@@ -156,8 +160,11 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 The step method is where control algorithm logic lives. In standard PyTorch training, you call `optimizer.step()` after every batch. With wrappers, the training loop is unchanged - you still call `step()` after every batch - but now the wrapper intercepts to make a binary decision: actually step the optimizer, or continue accumulating gradients. This is the Sequential Binary Decision Controller pattern in action. Exact decision formula varies.
 
 ```python
-def step(self) -> bool
+def step(self, *args, **kwargs) -> bool
 ```
+
+**Parameters:**
+- `*args, **kwargs` - Optional arguments for control algorithms requiring additional inputs (e.g., OptimizerWrapperMHT requires metric value). Most wrappers ignore these.
 
 **Returns:**
 - `bool` - True if optimizer stepped this call, False if still accumulating
@@ -167,10 +174,11 @@ def step(self) -> bool
 When implementing, you must call `_batch_received()` first to update counters, then implement your decision logic, then call `_take_optimizer_step()` if you decide to step. Return True if you stepped, False if accumulating.
 
 ```python
-def step(self):
+def step(self, *args, **kwargs):
     self._batch_received()  # Always first - updates counters
 
     # Decision logic here - examine gradients, metrics, schedules, etc.
+    # Can extract needed args/kwargs if algorithm requires them
     if should_step:
         self._take_optimizer_step()
         return True
