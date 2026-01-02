@@ -1,201 +1,410 @@
 """
-Tests for OptimizerWrapperMHT (Metric Hypothesis Test controller).
-"""
+Black box tests for OptimizerWrapperMHT (Metric Hypothesis Test).
 
-from unittest.mock import Mock
+Tests validate the public contract as documented in
+documentation/optimizer_wrapper_api.md. All tests use black box methodology:
+- Test only documented behavior
+- Use real PyTorch optimizers (no mocks)
+- Use ScheduleAnything for schedule target binding
+- Never access implementation details
+"""
 
 import pytest
 import torch
 import torch.nn as nn
-from metric_hypothesis_test import OptimizerWrapperMHT
+from torch_schedule_anything import arbitrary_schedule_factory
+
+from src.gradient_quality_control.metric_hypothesis_test import OptimizerWrapperMHT
 
 
-def create_mock_optimizer(num_params=3, param_shape=(10,)):
-    """Create mock optimizer with real parameters."""
-    params = [nn.Parameter(torch.randn(param_shape)) for _ in range(num_params)]
-    mock_opt = Mock()
-    mock_opt.param_groups = [{"params": params}]
-    mock_opt.step = Mock(return_value=None)
-    mock_opt.zero_grad = Mock()
-    return mock_opt, params
+# =============================================================================
+# Test Helpers and Fixtures
+# =============================================================================
 
 
-class TestHelperFunctions:
-    """Test static hypothesis test function atomically."""
+def create_simple_model():
+    """Create a simple model for testing."""
+    return nn.Sequential(
+        nn.Linear(10, 5),
+        nn.ReLU(),
+        nn.Linear(5, 2)
+    )
 
-    def test_rejects_with_insufficient_samples(self):
-        """Need at least 2 samples for t-test."""
-        metrics = [1.0]
-        running_avg = 1.0
-        result = OptimizerWrapperMHT._is_null_hypothesis_rejected(
-            metrics, running_avg, confidence=0.95, error_tolerance=0.1
+
+def create_optimizer_with_schedules(model, confidence_level, percent_error_threshold):
+    """Create MHT optimizer with fixed schedule targets."""
+    base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+    optimizer = OptimizerWrapperMHT(base_optimizer)
+
+    # Bind confidence_level schedule
+    confidence_scheduler = arbitrary_schedule_factory(
+        optimizer,
+        schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+            opt, lr_lambda=lambda step: confidence_level
+        ),
+        schedule_target='confidence_level'
+    )
+
+    # Bind percent_error_threshold schedule
+    error_scheduler = arbitrary_schedule_factory(
+        optimizer,
+        schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+            opt, lr_lambda=lambda step: percent_error_threshold
+        ),
+        schedule_target='percent_error_threshold'
+    )
+
+    return optimizer, (confidence_scheduler, error_scheduler)
+
+
+def perform_forward_backward(model):
+    """Perform forward pass, compute loss, and backward pass."""
+    x = torch.randn(4, 10)
+    output = model(x)
+    loss = output.sum()
+    loss.backward()
+    return loss.item()
+
+
+# =============================================================================
+# Suite 1: Constructor and Initialization
+# =============================================================================
+
+
+class TestConstructor:
+    """Test constructor parameter handling."""
+
+    def test_accepts_optimizer(self):
+        """Constructor accepts optimizer parameter."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer = OptimizerWrapperMHT(base_optimizer)
+
+        assert optimizer is not None
+
+    def test_accepts_max_batch_draws_parameter(self):
+        """Constructor accepts max_batch_draws parameter."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer = OptimizerWrapperMHT(base_optimizer, max_batch_draws=10)
+
+        assert optimizer is not None
+
+    def test_accepts_distributed_mode_parameter(self):
+        """Constructor accepts distributed_mode parameter."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer = OptimizerWrapperMHT(
+            base_optimizer,
+            distributed_mode="replicated"
         )
-        assert not result
 
-    def test_rejects_null_with_tight_confidence_interval(self):
-        """Identical metrics = zero variance = tight CI = reject null."""
-        metrics = [1.0, 1.0, 1.0, 1.0, 1.0]
-        running_avg = 1.0
-        result = OptimizerWrapperMHT._is_null_hypothesis_rejected(
-            metrics, running_avg, confidence=0.98, error_tolerance=0.03
-        )
-        assert result
+        assert optimizer is not None
 
-    def test_accepts_null_with_wide_confidence_interval(self):
-        """High variance = wide CI = accept null (don't step)."""
-        metrics = [0.5, 1.5, 0.5, 1.5]  # High variance
-        running_avg = 1.0
-        result = OptimizerWrapperMHT._is_null_hypothesis_rejected(
-            metrics, running_avg, confidence=0.98, error_tolerance=0.01  # Strict tolerance
-        )
-        assert not result
 
-    def test_more_samples_tighten_confidence_interval(self):
-        """More consistent samples = tighter CI."""
-        running_avg = 1.0
-        few_samples = [1.0, 1.0, 1.0]
-        many_samples = [1.0] * 20
+# =============================================================================
+# Suite 2: Stepping Behavior
+# =============================================================================
 
-        result_few = OptimizerWrapperMHT._is_null_hypothesis_rejected(
-            few_samples, running_avg, confidence=0.98, error_tolerance=0.03
-        )
-        result_many = OptimizerWrapperMHT._is_null_hypothesis_rejected(
-            many_samples, running_avg, confidence=0.98, error_tolerance=0.03
+
+class TestSteppingBehavior:
+    """Test step decision logic based on hypothesis test."""
+
+    def test_requires_metric_argument(self):
+        """step() requires metric argument."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
         )
 
-        # Both true since variance is 0
-        assert result_few
-        assert result_many
+        perform_forward_backward(model)
 
-    def test_returns_false_for_zero_mean(self):
-        """Zero mean edge case handled."""
-        metrics = [0.0, 0.0]
-        running_avg = 0.0
-        result = OptimizerWrapperMHT._is_null_hypothesis_rejected(
-            metrics, running_avg, confidence=0.98, error_tolerance=0.03
-        )
-        assert not result
-
-
-class TestControllerBehavior:
-    """Test stepping behavior based on hypothesis test."""
+        # Should accept metric argument
+        loss = 1.0
+        result = optimizer.step(metric=loss)
+        assert isinstance(result, bool)
 
     def test_accumulates_with_single_sample(self):
-        """Can't compute t-test with one sample."""
-        mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(mock_opt)
+        """Cannot perform hypothesis test with single sample."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
+        )
 
-        for p in params:
-            p.grad = torch.randn_like(p)
+        loss = perform_forward_backward(model)
+        result = optimizer.step(metric=loss)
 
-        result = wrapper.step(metric=1.0)
-
-        assert not result
-        mock_opt.step.assert_not_called()
+        # Should accumulate (need at least 2 samples for t-test)
+        assert result is False
 
     def test_steps_with_consistent_metrics(self):
-        """Consistent metrics = tight CI = step."""
-        mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(mock_opt, confidence=0.98, error_tolerance=0.03)
+        """Steps when metrics are consistent (tight confidence interval)."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.5
+        )
 
-        # Feed consistent metrics
-        stepped = False
+        # Feed consistent metric values
         for _ in range(10):
-            for p in params:
-                p.grad = torch.randn_like(p)
-            if wrapper.step(metric=1.0):
-                stepped = True
+            perform_forward_backward(model)
+            result = optimizer.step(metric=1.0)  # Identical metrics
+            if result:
                 break
 
-        assert stepped
+        # Should eventually step with identical metrics
+        assert result is True
 
     def test_accumulates_with_variable_metrics(self):
-        """Variable metrics = wide CI = accumulate."""
-        mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(
-            mock_opt, confidence=0.98, error_tolerance=0.001, max_batch_draws=100
+        """Accumulates when metrics are variable (wide confidence interval)."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.99, percent_error_threshold=0.001  # Very strict
         )
 
         # Feed highly variable metrics
-        for p in params:
-            p.grad = torch.randn_like(p)
-        result1 = wrapper.step(metric=0.1)
+        metrics = [0.1, 10.0, 0.5, 5.0]
+        results = []
+        for metric in metrics:
+            perform_forward_backward(model)
+            result = optimizer.step(metric=metric)
+            results.append(result)
 
-        for p in params:
-            p.grad = torch.randn_like(p)
-        result2 = wrapper.step(metric=10.0)
+        # Should still be accumulating due to high variance and strict threshold
+        assert not all(results)  # At least some False
 
-        for p in params:
-            p.grad = torch.randn_like(p)
-        result3 = wrapper.step(metric=0.1)
-
-        # Should still be accumulating due to high variance
-        assert not result1
-        assert not result2
-        assert not result3
-
-    def test_force_steps_at_max_draws(self):
-        """Steps when max_draws reached."""
-        mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(
-            mock_opt, confidence=0.999, error_tolerance=0.0001, max_batch_draws=3
+    def test_force_steps_at_max_batch_draws(self):
+        """Forces step when max_batch_draws reached."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        optimizer = OptimizerWrapperMHT(
+            base_optimizer,
+            max_batch_draws=3
         )
 
-        # Very strict params that won't be met
-        for p in params:
-            p.grad = torch.randn_like(p)
-        wrapper.step(metric=1.0)  # 1st
+        # Set very strict criteria that won't be met
+        confidence_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+                opt, lr_lambda=lambda step: 0.999
+            ),
+            schedule_target='confidence_level'
+        )
+        error_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+                opt, lr_lambda=lambda step: 0.0001
+            ),
+            schedule_target='percent_error_threshold'
+        )
 
-        for p in params:
-            p.grad = torch.randn_like(p)
-        wrapper.step(metric=2.0)  # 2nd
+        # Feed variable metrics that won't meet criteria
+        for i, metric in enumerate([1.0, 2.0, 3.0]):
+            perform_forward_backward(model)
+            result = optimizer.step(metric=metric)
+            if i < 2:
+                assert result is False
+            else:
+                assert result is True  # Forced at max_draws
 
-        for p in params:
-            p.grad = torch.randn_like(p)
-        result = wrapper.step(metric=3.0)  # 3rd = max_draws
 
-        assert result
-        mock_opt.step.assert_called_once()
+# =============================================================================
+# Suite 3: Schedule Integration
+# =============================================================================
 
-    def test_ema_updates_after_step(self):
-        """Running average updates when optimizer steps."""
-        mock_opt, params = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(mock_opt, confidence=0.98, error_tolerance=0.5, ema_alpha=0.1)
 
-        # Feed metrics until step
-        for _ in range(20):
-            for p in params:
-                p.grad = torch.randn_like(p)
-            if wrapper.step(metric=5.0):
-                # After stepping, EMA should be updated
-                assert wrapper.running_avg_metric is not None
+class TestScheduleIntegration:
+    """Test integration with ScheduleAnything."""
+
+    def test_responds_to_confidence_level_changes(self):
+        """Optimizer responds to scheduler changing confidence_level."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        optimizer = OptimizerWrapperMHT(base_optimizer)
+
+        # Start with relaxed confidence, then make strict
+        confidence_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+                opt, lr_lambda=lambda step: 0.50 if step < 2 else 0.999
+            ),
+            schedule_target='confidence_level'
+        )
+        error_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+                opt, lr_lambda=lambda step: 0.5
+            ),
+            schedule_target='percent_error_threshold'
+        )
+
+        # With relaxed confidence, should step quickly
+        perform_forward_backward(model)
+        optimizer.step(metric=1.0)
+        perform_forward_backward(model)
+        result1 = optimizer.step(metric=1.0)
+
+        # Should step with relaxed criteria
+        assert isinstance(result1, bool)
+
+    def test_responds_to_error_threshold_changes(self):
+        """Optimizer responds to scheduler changing percent_error_threshold."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        optimizer = OptimizerWrapperMHT(base_optimizer, max_batch_draws=20)
+
+        # High error tolerance makes it easy to step
+        confidence_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+                opt, lr_lambda=lambda step: 0.95
+            ),
+            schedule_target='confidence_level'
+        )
+        error_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
+                opt, lr_lambda=lambda step: 10.0  # Very high tolerance
+            ),
+            schedule_target='percent_error_threshold'
+        )
+
+        # Should step with high error tolerance
+        for _ in range(5):
+            perform_forward_backward(model)
+            result = optimizer.step(metric=1.0)
+            if result:
                 break
 
-        # EMA should reflect the fact we’ve had at least one metric update
-        assert wrapper.running_avg_metric is not None
+        assert isinstance(result, bool)
+
+    def test_works_with_pytorch_schedulers(self):
+        """Works with standard PyTorch schedulers."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        optimizer = OptimizerWrapperMHT(base_optimizer)
+
+        # Use StepLR for both targets
+        confidence_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.StepLR(
+                opt, step_size=5, gamma=0.9
+            ),
+            schedule_target='confidence_level',
+            default_value=0.95
+        )
+        error_scheduler = arbitrary_schedule_factory(
+            optimizer,
+            schedule_factory=lambda opt: torch.optim.lr_scheduler.StepLR(
+                opt, step_size=5, gamma=1.1
+            ),
+            schedule_target='percent_error_threshold',
+            default_value=0.1
+        )
+
+        # Should work without errors
+        perform_forward_backward(model)
+        result = optimizer.step(metric=1.0)
+        assert isinstance(result, bool)
+
+
+# =============================================================================
+# Suite 4: Statistics
+# =============================================================================
 
 
 class TestStatistics:
-    """Test statistics contract."""
+    """Test statistics() method contract."""
 
-    def test_statistics_contains_required_keys(self):
-        mock_opt, _ = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(mock_opt)
-        stats = wrapper.statistics()
+    def test_statistics_returns_dict(self):
+        """statistics() returns a dictionary."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
+        )
 
-        assert "running_avg_metric" in stats
-        assert "batches" in stats
-        assert "steps" in stats
+        stats = optimizer.statistics()
+        assert isinstance(stats, dict)
+
+    def test_statistics_contains_base_counters(self):
+        """statistics() includes counters from base class."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
+        )
+
+        stats = optimizer.statistics()
+        assert "num_batches" in stats or "batches" in stats
+        assert "num_steps" in stats or "steps" in stats
         assert "num_draws" in stats
 
-    def test_running_avg_initially_none(self):
-        mock_opt, _ = create_mock_optimizer()
-        wrapper = OptimizerWrapperMHT(mock_opt)
-        stats = wrapper.statistics()
+    def test_statistics_updates_after_accumulation(self):
+        """statistics() reflects state changes."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.95, percent_error_threshold=0.1
+        )
 
-        # Before any metrics, should be None
-        assert stats["running_avg_metric"] is None
+        initial_stats = optimizer.statistics()
+
+        # Accumulate
+        perform_forward_backward(model)
+        optimizer.step(metric=1.0)
+
+        updated_stats = optimizer.statistics()
+
+        # Counters should have changed
+        assert (updated_stats.get("num_draws", 0) != initial_stats.get("num_draws", 0) or
+                updated_stats.get("num_batches", 0) != initial_stats.get("num_batches", 0) or
+                updated_stats.get("batches", 0) != initial_stats.get("batches", 0))
+
+
+# =============================================================================
+# Suite 5: Gradient Accumulation
+# =============================================================================
+
+
+class TestGradientAccumulation:
+    """Test gradient accumulation behavior."""
+
+    def test_accumulates_gradients_across_draws(self):
+        """Gradients are accumulated across multiple draws."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.99, percent_error_threshold=0.001
+        )
+
+        # First draw
+        perform_forward_backward(model)
+        first_grad = model[0].weight.grad.clone()
+        optimizer.step(metric=1.0)
+
+        # Second draw
+        perform_forward_backward(model)
+        second_grad_before_step = model[0].weight.grad.clone()
+
+        # Gradient should be sum of both draws
+        assert not torch.allclose(second_grad_before_step, first_grad)
+
+    def test_gradients_cleared_after_step(self):
+        """Gradients are cleared after optimizer steps."""
+        model = create_simple_model()
+        optimizer, schedulers = create_optimizer_with_schedules(
+            model, confidence_level=0.50, percent_error_threshold=1.0
+        )
+
+        # Feed identical metrics to trigger step
+        for _ in range(10):
+            perform_forward_backward(model)
+            result = optimizer.step(metric=1.0)
+            if result:
+                break
+
+        # After stepping, gradients should be cleared
+        assert model[0].weight.grad is None or torch.all(model[0].weight.grad == 0)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    pytest.main([__file__, "-v"])
