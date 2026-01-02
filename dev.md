@@ -44,11 +44,32 @@ Throughout this cycle, the **auditor role backpropagates changes** through the d
 
 Testing is extremely important. One of the benefits of this workflow is it makes black box testing natural as when tests are written the underlying implementation is not yet known, an advantage of the outside-in development pattern. However, this requires actually following a black box testing strategy.
 
-Black box testing validates contracts by testing only what's observable through the public interface. You test public methods and their documented behaviors, observable state like properties and return values, how injected dependencies are used, and emergent behavior that results from following the contract. You cannot test implementation details, undocumented behavior, private state, or bind tests to specific internal functions.
+The underlying philosophy: tests validate that the contract is honored, not that specific implementation approaches are used. You are held to the documented specification - if it's in the specification, it must be testable; if it's not in the specification, you cannot bind tests to it.
 
-The difference matters. Testing "take_optimizer_step averages gradients" is white box - it tests a specific function's implementation. Testing "using optimizer results in gradient averaging" is black box - it tests emergent behavior from following the contract. The first breaks when you refactor internals. The second remains valid as long as the contract is honored.
+**What you CAN test:**
+- Public methods with their documented input/output behaviors
+- Observable state accessible through public properties or methods
+- How injected dependencies are called (e.g., verify optimizer.step() was called, gradients were modified)
+- Emergent behavior from following the contract (e.g., "using optimizer produces averaged gradients")
+- Documented invariants and constraints
+- Error conditions and exceptions specified in the contract
 
-This creates complete decoupling. Implementation can change freely - different algorithms, data structures, optimizations - and tests remain valid. The contract is the specification, tests validate the contract, and implementation is free to evolve within those bounds. This is what enables LLMs and junior developers to safely implement to spec.
+**What you CANNOT test:**
+- Implementation details (which algorithm is used, internal data structures, private methods)
+- Undocumented behavior or side effects
+- Private state or internal variables
+- Specific function implementations (binding tests to `_take_optimizer_step` doing X is white box)
+- Performance characteristics unless documented in the contract
+- Anything not specified in the public documentation
+
+**Consequences of violating black box testing:**
+- Tests break during refactoring even when contract is preserved
+- Implementation becomes coupled to tests, losing refactoring freedom
+- Cannot safely delegate implementation to LLMs or juniors
+- Technical debt accumulates as "cannot change this, tests will break"
+- The entire benefit of contract-based development is lost
+
+Testers identify needed APIs by thinking through from a public perspective how the system must interact with its injected dependencies. This identifies what contracts need to be designed.
 
 ### Pros, Cons, Use cases
 
@@ -73,12 +94,28 @@ DDD is project-oriented and produces substantial documentation. It's not lightwe
 
 ### Roles
 
-The methodology cleanly separates concerns across three distinct roles that can be filled by different people or even different types of workers (humans vs LLMs).
+The methodology separates concerns across four roles with different experience requirements and automation potential. The system is designed to allow mistakes in everything except the auditor role, and to allow automation in anything except the auditor role.
 
-**Designer** writes contracts and designs architecture. They gather requirements, form the big picture story, identify dependencies, make architectural trade-offs explicit, and progressively refine documentation as patterns emerge. This requires domain expertise and architectural vision - understanding what needs to be built and why. Designers work at high abstraction levels.
+**Implementer** (lowest experience): Implements to specification of design and tests. Does integration tests as well. Fills bounded contracts mechanically. Can be automated with LLMs.
 
-**Auditor** maintains consistency across the living specification. They backpropagate changes through the documentation tree, elevating discovered dependencies to the big picture when appropriate, resolving conflicts like multiple logging frameworks, reviewing contracts for completeness, verifying tests follow black box methodology, and keeping the big picture synchronized with detailed work. LLMs can sometimes assist with auditing by spotting inconsistencies and checking coverage.
+**Tester** (moderate experience): Thinks through abstract dependencies and implements unit tests in a decoupled manner. Identifies new APIs to be designed to a given spec by figuring out from a public perspective how the system must interact with its injected dependencies. This is where API requirements emerge. Requires understanding of the public contract and black box testing principles.
 
-**Implementer** fills bounded contracts. They implement test suites from contracts (mechanical transcription of requirements), implement code to pass tests (bounded problem solving), identify contract ambiguities and escalate to designer, and refactor within contract bounds. LLMs excel as implementers since they're good at "implement to spec" but struggle with "design the spec". Junior developers also work well as implementers with clear contracts.
+**Designer** (high experience): Does documentation and establishes injection contracts as needed. Gathers requirements, forms big picture story, makes architectural trade-offs explicit, progressively refines documentation as patterns emerge. Requires domain expertise and architectural vision.
 
-This separation works because each role operates at its natural abstraction level with clear success criteria and boundaries. Designers need creativity and vision, auditors need consistency checking, implementers need mechanical execution. The workflow ensures clean handoffs between roles.
+**Auditor** (highest experience, MOST IMPORTANT): Ensures consistency and crosschecks compliance between documentation and tests, or tests and code. Nothing gets committed without auditor's approval. Backpropagates changes through documentation tree, elevates discovered dependencies to big picture when appropriate, resolves conflicts. This is the most critical role - the entire system is designed to catch mistakes here. Cannot be fully automated - requires human judgment and experience.
+
+Experience hierarchy: Implementer → Tester → Designer → Auditor
+
+### Feedback and Change Management
+
+As work progresses, issues and needed changes emerge. When implementation or testing reveals problems, they are propagated up the documentation chain, putting the documentation out of sync. These needed changes accumulate in tickets rather than being fixed ad-hoc.
+
+When an issue is discovered:
+1. The issue is documented (what's wrong, what needs to change)
+2. Needed changes are elevated to the appropriate level (design, contract, test specification)
+3. Changes are bound together as a ticket to be completed
+4. The auditor reviews proposed changes for consistency with the big picture
+5. Once approved, changes are implemented across documentation, tests, and code as a unit
+6. Nothing is committed until the auditor confirms documentation, tests, and code are synchronized
+
+This prevents documentation drift and ensures the living specification stays synchronized with implementation reality. Issues become opportunities to refine the contracts rather than accumulating as technical debt.
