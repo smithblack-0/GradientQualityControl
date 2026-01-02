@@ -19,9 +19,9 @@ DDD requires a specific workflow to realize its benefits. A good workflow should
 The workflow operates in a cycle that spawns forks at progressively finer abstraction levels:
 
 ```
-API Requirement → Documentation → Tests → Implementation → Integration Tests
+API Requirement → Documentation → Tests → Implementation → Factories→ Integration
                                     ↓ (spawns dependency API)
-                                    API Requirement → Documentation → Tests → Implementation → Integration Tests
+                                    API Requirement → Documentation → Tests → Implementation → Factories->Integration
                                                                         ↓ (spawns sub-dependency)
                                                                         API Requirement → Documentation → Tests → ...
 ```
@@ -29,12 +29,13 @@ API Requirement → Documentation → Tests → Implementation → Integration T
 Starting from a **design foundation** that establishes the project's invariants, requirements, utilities, and directions, you progressively unroll detail:
 
 1. While writing tests at one abstraction level, you realize "I need to inject something doing X, Y, Z"
-2. This **spawns an API requirement** for that dependency
-3. The API requirement gets **documented as a contract**
-4. You can now **fork**: fill the contract immediately, stub it for later, or assign to someone else
-5. Continue testing with the dependency interface defined
-6. Implement code to pass tests
-7. Write integration tests to verify pieces work together
+2. This **spawns an API requirement** for that dependency, usually an object or data structure.
+3. The API requirement gets **documented as a contract** that collects dependencies while designing the test.
+4. You can now **fork**: fill the contract immediately, stub it for later, or assign to someone else.
+5. Continue testing with the dependency interface defined.
+6. Implement code to pass tests.
+7. Write factories to build the objects once all sub-dependencies are done (blocking)
+7. Write integration tests to verify pieces work together.
 
 **Spawning Documentation.** When a lower-level dependency emerges, you **contract it out** rather than implementing it inline. Forks should happen organtically during test writing or sometimes design as you realize that you need a dependency doing X. X then becomes the base of an api specification that can be handed back to the design team to be fleshed out. Critically, **Black box testing** validates contracts by testing what's observable (public methods, state, injected dependency usage, emergent behavior) rather than how it works internally. This leaves an abstract design space that just needs to be filled in downstream, and can largely be automated.
 
@@ -49,7 +50,7 @@ The underlying philosophy: tests validate that the contract is honored, not that
 **What you CAN test:**
 - Public methods with their documented input/output behaviors
 - Observable state accessible through public properties or methods
-- How injected dependencies are called (e.g., verify optimizer.step() was called, gradients were modified)
+- How injected dependencies are called but ONLY from the public facing contract. You verify .step was called, not that it stepped in subfunction X.
 - Emergent behavior from following the contract (e.g., "using optimizer produces averaged gradients")
 - Documented invariants and constraints
 - Error conditions and exceptions specified in the contract
@@ -58,9 +59,10 @@ The underlying philosophy: tests validate that the contract is honored, not that
 - Implementation details (which algorithm is used, internal data structures, private methods)
 - Undocumented behavior or side effects
 - Private state or internal variables
-- Specific function implementations (binding tests to `_take_optimizer_step` doing X is white box)
-- Performance characteristics unless documented in the contract
+- Testing behavior that needs to be tested outside of contracted access route or implementation.
 - Anything not specified in the public documentation
+
+If you need to test something, but cannot because of this, either the documentation needs tweaks or/and new apis need to be spawned abstracting that behavior away. Documentation changes would then be routed back to design, as would be the finished collection of api changes.
 
 **Consequences of violating black box testing:**
 - Tests break during refactoring even when contract is preserved
@@ -69,11 +71,11 @@ The underlying philosophy: tests validate that the contract is honored, not that
 - Technical debt accumulates as "cannot change this, tests will break"
 - The entire benefit of contract-based development is lost
 
-Testers identify needed APIs by thinking through from a public perspective how the system must interact with its injected dependencies. This identifies what contracts need to be designed.
+Testers identify needed APIs by thinking through from a public perspective how the system must interact with its injected dependencies. This identifies what contracts need to be designed. Everything else becomes a black box that can be handed off to the implementation.
 
 ### Pros, Cons, Use cases
 
-DDD is project-oriented and produces substantial documentation. It's not lightweight - expect to write significant documentation mass. The methodology works best when you can leverage its strengths and avoid contexts where its properties become liabilities.
+DDD is project-oriented and produces substantial documentation. It's not lightweight - expect to write a formal specification level of documentation while doing the project. At the same time, it is not waterflow. It is designed to start at the big picture, to avoid making horrible design mistakes, then get progressively better. It also is designed explictly for environments where handing contracts off for implementation is cheap.
 
 **Excellent fit:**
 - Building tools and libraries with stable, well-defined interfaces
@@ -90,32 +92,18 @@ DDD is project-oriented and produces substantial documentation. It's not lightwe
 - Projects that don't naturally decompose into abstraction layers
 - When you're still discovering what to build
 
-**Why this fits GradientQualityControl:** We're building a tool library with stable optimizer interfaces, complex multi-layer abstractions (base wrapper, concrete implementations, scheduling integration), need LLM assistance for implementation, require long-term maintainability, and have proven viability through initial experiments. The workflow naturally handles the fork-heavy architecture where each optimizer type spawns its own contract while sharing the base abstraction.
+We're building a tool library with stable optimizer interfaces, complex multi-layer abstractions (base wrapper, concrete implementations, scheduling integration), need LLM assistance for implementation, require long-term maintainability, and have proven viability through initial experiments. The workflow naturally handles the fork-heavy architecture where each optimizer type spawns its own contract while sharing the base abstraction.
 
 ### Roles
 
 The methodology separates concerns across four roles with different experience requirements and automation potential. The system is designed to allow mistakes in everything except the auditor role, and to allow automation in anything except the auditor role.
 
-**Implementer** (lowest experience): Implements to specification of design and tests. Does integration tests as well. Fills bounded contracts mechanically. Can be automated with LLMs.
+**Implementer** (lowest experience): Implements to specification of design and tests. Does integration tests as well. Fills bounded contracts mechanically. Can be automated with LLMs. They will also form the factories used to construct the objects once the tests are done. Should escalate back to testing if behavior is impossible.
 
-**Tester** (moderate experience): Thinks through abstract dependencies and implements unit tests in a decoupled manner. Identifies new APIs to be designed to a given spec by figuring out from a public perspective how the system must interact with its injected dependencies. This is where API requirements emerge. Requires understanding of the public contract and black box testing principles.
+**Tester** (moderate experience): Thinks through abstract dependencies and implements unit tests in a decoupled manner. Identifies new APIs to be designed to a given spec by figuring out from a public perspective how the system must interact with its injected dependencies. This is where API requirements emerge and abstraction is defined in terms of injection and dependencies. Requires understanding of the public contract, black box testing principles, and how to identify different levels of abstractions. Often performs minor documentation changes too, but should escalate to design if major changes are needed.
 
-**Designer** (high experience): Does documentation and establishes injection contracts as needed. Gathers requirements, forms big picture story, makes architectural trade-offs explicit, progressively refines documentation as patterns emerge. Requires domain expertise and architectural vision.
+**Designer** (high experience): Does documentation and establishes injection contracts as needed. Gathers requirements, forms big picture story, makes architectural trade-offs explicit, progressively refines documentation as patterns emerge. Requires domain expertise and architectural vision. Revises documentation and establishes what refactoring now needs to be executed. They implement API contracts into documentation for it, and pass it to testing. They also escalate major issues, along with a resolution plan, to auditing. 
 
-**Auditor** (highest experience, MOST IMPORTANT): Ensures consistency and crosschecks compliance between documentation and tests, or tests and code. Nothing gets committed without auditor's approval. Backpropagates changes through documentation tree, elevates discovered dependencies to big picture when appropriate, resolves conflicts. This is the most critical role - the entire system is designed to catch mistakes here. Cannot be fully automated - requires human judgment and experience.
+**Auditor** (highest experience, MOST IMPORTANT): Ensures consistency and crosschecks compliance between documentation and tests, or tests and code. Nothing gets committed without auditor's approval. Backpropagates changes through documentation tree, approves discovered dependencies to higher abstraction level requiring refactor, resolves conflicts. This is the most critical role - the entire system is designed to catch mistakes here. They are basically a PM with deep domain expertise who reviews the documentation. Cannot be fully automated - requires human judgment and experience.
 
 Experience hierarchy: Implementer → Tester → Designer → Auditor
-
-### Feedback and Change Management
-
-As work progresses, issues and needed changes emerge. When implementation or testing reveals problems, they are propagated up the documentation chain, putting the documentation out of sync. These needed changes accumulate in tickets rather than being fixed ad-hoc.
-
-When an issue is discovered:
-1. The issue is documented (what's wrong, what needs to change)
-2. Needed changes are elevated to the appropriate level (design, contract, test specification)
-3. Changes are bound together as a ticket to be completed
-4. The auditor reviews proposed changes for consistency with the big picture
-5. Once approved, changes are implemented across documentation, tests, and code as a unit
-6. Nothing is committed until the auditor confirms documentation, tests, and code are synchronized
-
-This prevents documentation drift and ensures the living specification stays synchronized with implementation reality. Issues become opportunities to refine the contracts rather than accumulating as technical debt.
