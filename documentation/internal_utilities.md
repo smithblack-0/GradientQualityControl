@@ -4,7 +4,7 @@ Internal utility functions for GradientQualityControl. These are not part of the
 
 ---
 
-## compute_gradient_norm
+## compute_grad_norm_from_optimizer
 
 Computes the L2 norm of gradients across all parameters in an optimizer.
 
@@ -15,7 +15,7 @@ Provides a centralized, correct implementation of gradient norm computation used
 ### Signature
 
 ```python
-def compute_gradient_norm(optimizer: torch.optim.Optimizer) -> float
+def compute_grad_norm_from_optimizer(optimizer: torch.optim.Optimizer) -> float
 ```
 
 ### Parameters
@@ -56,7 +56,7 @@ def compute_gradient_norm(optimizer: torch.optim.Optimizer) -> float
 loss.backward()
 
 # Compute gradient norm
-grad_norm = compute_gradient_norm(optimizer)
+grad_norm = compute_grad_norm_from_optimizer(optimizer)
 
 # Use in control decision
 if grad_norm <= threshold:

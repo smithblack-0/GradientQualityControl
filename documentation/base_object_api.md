@@ -140,7 +140,7 @@ def __init__(self, optimizer: torch.optim.Optimizer, max_draws: int = 64, distri
 - Stores `max_draws` as safety bound
 - Stores `distributed_mode` as optional state (accessible via `get_state("distributed_mode")`)
 
-**Subclass Implementation Pattern:**
+**Subclassing Pattern:**
 ```python
 class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     def __init__(self, optimizer, max_draws=64, distributed_mode=None):
@@ -169,9 +169,9 @@ def step(self, *args, **kwargs) -> bool
 **Returns:**
 - `bool` - True if optimizer stepped this call, False if still accumulating
 
-**Implementation Pattern:**
+**Subclassing Pattern:**
 
-When implementing, you must call `_batch_received()` first to update counters, then implement your decision logic, then call `_take_optimizer_step()` if you decide to step. Return True if you stepped, False if accumulating.
+When subclassing, you must call `_batch_received()` first to update counters, then implement your decision logic, then call `_take_optimizer_step()` if you decide to step. Return True if you stepped, False if accumulating.
 
 ```python
 def step(self, *args, **kwargs):
