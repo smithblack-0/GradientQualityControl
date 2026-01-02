@@ -1,20 +1,9 @@
 # Changelog
 
-## 0.9.0
+## 0.9.2
 
-- BREAKING CHANGE: Rebuilding using Documentation Driven Development and ScheduleAnything
-- Complete rebuild of all documentation.
-- Onto library rebuild
+**Test Infrastructure Rewrite (Black Box Methodology)**
 
-### Testing Infrastructure Updates
-
-**Base Class API Updates:**
-- Added `distributed_mode` parameter to base class for distributed training support (replicated/sharded modes)
-- Updated `step()` signature to accept `*args, **kwargs` for algorithms requiring additional inputs (e.g., MHT metric)
-- Fixed terminology throughout: "Implementation Pattern" → "Subclassing Pattern" (contracts document subclassing, not implementation)
-- Added internal utilities documentation for shared gradient norm computation
-
-**Test Suite Rewrite (Black Box Methodology):**
 - Completely rewrote all 5 optimizer wrapper test suites (SBC, GNTS, GNR, MHT, GNS)
 - Migrated from Mock-based testing to real PyTorch optimizers
 - Integrated ScheduleAnything for proper schedule target binding
@@ -26,15 +15,25 @@
 - Added minimal statistics smoke tests to verify API exists
 - Fixed all import paths and terminology (optimizer/base_optimizer, never "wrapper")
 
-**OptimizerWrapperGNR Contract Update:**
-- Added `mode` parameter: "global" (default) or "independent" scaling modes
-- Global mode: computes norm across all parameters, scales uniformly
-- Independent mode: scales each parameter to target norm separately
+## 0.9.1
 
-**Base Class Test Updates:**
-- Added tests for `distributed_mode` parameter validation
-- Added tests for `step()` signature flexibility with `*args, **kwargs`
-- Validation tests ensure only valid distributed modes accepted ("replicated", "sharded", None)
+**Base Class API and Contract Updates**
+
+- Added `distributed_mode` parameter to base class for distributed training support (replicated/sharded modes)
+- Updated `step()` signature to accept `*args, **kwargs` for algorithms requiring additional inputs (e.g., MHT metric)
+- Fixed terminology throughout: "Implementation Pattern" → "Subclassing Pattern" (contracts document subclassing, not implementation)
+- Added internal utilities documentation for shared gradient norm computation
+- Added `mode` parameter to OptimizerWrapperGNR: "global" (default) or "independent" scaling modes
+  - Global mode: computes norm across all parameters, scales uniformly
+  - Independent mode: scales each parameter to target norm separately
+- Updated base class tests for `distributed_mode` parameter validation
+- Updated base class tests for `step()` signature flexibility with `*args, **kwargs`
+
+## 0.9.0
+
+- BREAKING CHANGE: Rebuilding using Documentation Driven Development and ScheduleAnything
+- Complete rebuild of all documentation
+- Onto library rebuild
 
 ## 0.8.6
 
