@@ -9,12 +9,17 @@ documentation/optimizer_wrapper_api.md. All tests use black box methodology:
 - Never access implementation details
 """
 
+import math
 import pytest
 import torch
 import torch.nn as nn
-from torch_schedule_anything import arbitrary_schedule_factory
+from torch_schedule_anything import arbitrary_schedule_factory, SynchronousSchedule
 
-from src.gradient_quality_control.gradient_norm_rescaler import OptimizerWrapperGNR
+from src.gradient_quality_control.gradient_norm_rescaler import (
+    OptimizerWrapperGNR,
+    make_gnr_with_cosine_annealing_schedule,
+    make_gnr_with_cosine_annealing_schedule_conventional_lr,
+)
 
 
 # =============================================================================
@@ -329,6 +334,171 @@ class TestStatisticsSmoke:
 
         vital_stats = optimizer.vital_statistics()
         assert isinstance(vital_stats, dict)
+
+
+# =============================================================================
+# Suite 7: Factory Tests
+# =============================================================================
+
+
+class TestMakeGNRWithCosineAnnealingSchedule:
+    """Test make_gnr_with_cosine_annealing_schedule factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_gnr_with_cosine_annealing_schedule)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperGNR, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperGNR)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_lr_constant_after_warmup(self):
+        """Learning rate stays constant after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of warmup
+        for _ in range(100):
+            scheduler.step()
+        lr_at_100 = scheduler.get_last_lr()[0]
+
+        # Later in training
+        for _ in range(400):
+            scheduler.step()
+        lr_at_500 = scheduler.get_last_lr()[0]
+
+        # LR should be constant
+        assert math.isclose(lr_at_100, initial_lr, rel_tol=0.01)
+        assert math.isclose(lr_at_500, initial_lr, rel_tol=0.01)
+
+    def test_gradient_norm_anneals(self):
+        """Target gradient norm anneals from initial to final."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        norm_at_end = scheduler.get_last_schedule("target_gradient_norm")[0]
+
+        assert math.isclose(norm_at_end, 0.1, rel_tol=0.01)
+
+    def test_weight_decay_anneals_to_zero(self):
+        """Weight decay anneals to zero after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+        initial_wd = 0.01
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        wd_at_end = scheduler.get_last_schedule("weight_decay")[0]
+
+        # Should be near zero
+        assert wd_at_end < initial_wd * 0.1
+
+
+class TestMakeGNRWithCosineAnnealingScheduleConventionalLR:
+    """Test make_gnr_with_cosine_annealing_schedule_conventional_lr factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_gnr_with_cosine_annealing_schedule_conventional_lr)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperGNR, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperGNR)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_lr_anneals_after_warmup(self):
+        """Learning rate anneals to zero after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        lr_at_end = scheduler.get_last_lr()[0]
+
+        # Should anneal to near zero
+        assert lr_at_end < initial_lr * 0.1
+
+    def test_gradient_norm_anneals(self):
+        """Target gradient norm anneals from initial to final."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gnr_with_cosine_annealing_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            initial_norm=1.0,
+            final_norm=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        norm_at_end = scheduler.get_last_schedule("target_gradient_norm")[0]
+
+        assert math.isclose(norm_at_end, 0.1, rel_tol=0.01)
 
 
 if __name__ == "__main__":

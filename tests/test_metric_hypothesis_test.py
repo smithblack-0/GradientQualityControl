@@ -9,12 +9,16 @@ documentation/optimizer_wrapper_api.md. All tests use black box methodology:
 - Never access implementation details
 """
 
+import math
 import pytest
 import torch
 import torch.nn as nn
-from torch_schedule_anything import arbitrary_schedule_factory
+from torch_schedule_anything import arbitrary_schedule_factory, SynchronousSchedule
 
-from src.gradient_quality_control.metric_hypothesis_test import OptimizerWrapperMHT
+from src.gradient_quality_control.metric_hypothesis_test import (
+    OptimizerWrapperMHT,
+    make_mht_with_warmup_schedule,
+)
 
 
 # =============================================================================
@@ -337,6 +341,148 @@ class TestStatisticsSmoke:
 
         vital_stats = optimizer.vital_statistics()
         assert isinstance(vital_stats, dict)
+
+
+# =============================================================================
+# Suite 5: Factory Tests
+# =============================================================================
+
+
+class TestMakeMHTWithWarmupSchedule:
+    """Test make_mht_with_warmup_schedule factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_mht_with_warmup_schedule)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperMHT, scheduler) tuple."""
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_mht_with_warmup_schedule(
+            optimizer=base_optimizer,
+            confidence_level=0.95,
+            percent_error_threshold=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperMHT)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_wrapper_configuration(self):
+        """Wrapper is configured with correct parameters."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_mht_with_warmup_schedule(
+            optimizer=base_optimizer,
+            confidence_level=0.95,
+            percent_error_threshold=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            max_batch_draws=32,
+            distributed_mode="sharded",
+        )
+
+        assert optimizer is not None
+
+    def test_lr_schedule_warmup_and_annealing(self):
+        """Learning rate follows warmup then cosine annealing."""
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_mht_with_warmup_schedule(
+            optimizer=base_optimizer,
+            confidence_level=0.95,
+            percent_error_threshold=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Test warmup phase (step 50)
+        for _ in range(50):
+            scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        expected_lr = initial_lr * (1.0 * 50) / 100
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+        # Test at end of warmup (step 100)
+        for _ in range(50):
+            scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        expected_lr = initial_lr * 1.0
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+        # Test annealing phase (step 550)
+        for _ in range(450):
+            scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        # λ(t=550) = A + (W - A) * cos(π/2 * (t-L)/(M-L))
+        A, W, L, M, t = 0.001, 1.0, 100, 1000, 550
+        expected_lambda = A + (W - A) * math.cos(math.pi / 2 * (t - L) / (M - L))
+        expected_lr = initial_lr * expected_lambda
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+    def test_confidence_level_constant_after_warmup(self):
+        """Confidence level stays constant after warmup."""
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_mht_with_warmup_schedule(
+            optimizer=base_optimizer,
+            confidence_level=0.95,
+            percent_error_threshold=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Step past warmup
+        for _ in range(150):
+            scheduler.step()
+        conf_at_150 = scheduler.get_last_schedule("confidence_level")[0]
+
+        # Step much further
+        for _ in range(400):
+            scheduler.step()
+        conf_at_550 = scheduler.get_last_schedule("confidence_level")[0]
+
+        # Should be constant at 0.95
+        assert math.isclose(conf_at_150, 0.95, rel_tol=0.01)
+        assert math.isclose(conf_at_550, 0.95, rel_tol=0.01)
+
+    def test_error_threshold_constant_after_warmup(self):
+        """Percent error threshold stays constant after warmup."""
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_mht_with_warmup_schedule(
+            optimizer=base_optimizer,
+            confidence_level=0.95,
+            percent_error_threshold=0.1,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Step past warmup
+        for _ in range(150):
+            scheduler.step()
+        error_at_150 = scheduler.get_last_schedule("percent_error_threshold")[0]
+
+        # Step much further
+        for _ in range(400):
+            scheduler.step()
+        error_at_550 = scheduler.get_last_schedule("percent_error_threshold")[0]
+
+        # Should be constant at 0.1
+        assert math.isclose(error_at_150, 0.1, rel_tol=0.01)
+        assert math.isclose(error_at_550, 0.1, rel_tol=0.01)
 
 
 if __name__ == "__main__":

@@ -9,12 +9,17 @@ documentation/optimizer_wrapper_api.md. All tests use black box methodology:
 - Never access implementation details
 """
 
+import math
 import pytest
 import torch
 import torch.nn as nn
-from torch_schedule_anything import arbitrary_schedule_factory
+from torch_schedule_anything import arbitrary_schedule_factory, SynchronousSchedule
 
-from src.gradient_quality_control.scheduled_batch_controller import OptimizerWrapperSBC
+from src.gradient_quality_control.scheduled_batch_controller import (
+    OptimizerWrapperSBC,
+    make_sbc_with_polynomial_schedule,
+    make_sbc_with_polynomial_schedule_conventional_lr,
+)
 
 
 # =============================================================================
@@ -283,6 +288,195 @@ class TestStatisticsSmoke:
 
         vital_stats = optimizer.vital_statistics()
         assert isinstance(vital_stats, dict)
+
+
+# =============================================================================
+# Suite 5: Factory Tests
+# =============================================================================
+
+
+class TestMakeSBCWithPolynomialSchedule:
+    """Test make_sbc_with_polynomial_schedule factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_sbc_with_polynomial_schedule)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperSBC, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperSBC)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_lr_constant_after_warmup(self):
+        """Learning rate stays constant after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Step to end of warmup
+        for _ in range(100):
+            scheduler.step()
+        lr_at_100 = scheduler.get_last_lr()[0]
+
+        # Step further into training
+        for _ in range(400):
+            scheduler.step()
+        lr_at_500 = scheduler.get_last_lr()[0]
+
+        # LR should be constant at initial_lr
+        assert math.isclose(lr_at_100, initial_lr, rel_tol=0.01)
+        assert math.isclose(lr_at_500, initial_lr, rel_tol=0.01)
+
+    def test_batch_size_polynomial_schedule(self):
+        """Batch size follows polynomial schedule from initial to final."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            polynomial_power=2.0,
+        )
+
+        # At end of warmup, batch size should be at initial_batch_size
+        for _ in range(100):
+            scheduler.step()
+        batch_size_at_100 = scheduler.get_last_schedule("logical_batch_size")[0]
+        assert math.isclose(batch_size_at_100, 64, rel_tol=0.01)
+
+        # At end of training, should be at final_batch_size
+        for _ in range(900):
+            scheduler.step()
+        batch_size_at_1000 = scheduler.get_last_schedule("logical_batch_size")[0]
+        assert math.isclose(batch_size_at_1000, 256, rel_tol=0.01)
+
+    def test_weight_decay_cosine_annealing(self):
+        """Weight decay follows cosine annealing to zero after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+        initial_wd = 0.01
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of training, weight decay should anneal to ~0
+        for _ in range(1000):
+            scheduler.step()
+        wd_at_end = scheduler.get_last_schedule("weight_decay")[0]
+
+        # Should be close to zero (annealed down from initial)
+        assert wd_at_end < initial_wd * 0.1
+
+
+class TestMakeSBCWithPolynomialScheduleConventionalLR:
+    """Test make_sbc_with_polynomial_schedule_conventional_lr factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_sbc_with_polynomial_schedule_conventional_lr)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperSBC, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperSBC)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_lr_anneals_after_warmup(self):
+        """Learning rate anneals to zero after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of warmup, LR should be at initial value
+        for _ in range(100):
+            scheduler.step()
+        lr_at_100 = scheduler.get_last_lr()[0]
+        assert math.isclose(lr_at_100, initial_lr, rel_tol=0.01)
+
+        # At end of training, LR should anneal toward zero
+        for _ in range(900):
+            scheduler.step()
+        lr_at_1000 = scheduler.get_last_lr()[0]
+
+        # Should be much smaller than initial (annealed down)
+        assert lr_at_1000 < initial_lr * 0.1
+
+    def test_batch_size_polynomial_schedule(self):
+        """Batch size follows polynomial schedule from initial to final."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_sbc_with_polynomial_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            physical_batch_size=32,
+            initial_batch_size=64,
+            final_batch_size=256,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # At end of warmup
+        for _ in range(100):
+            scheduler.step()
+        batch_size_at_100 = scheduler.get_last_schedule("logical_batch_size")[0]
+        assert math.isclose(batch_size_at_100, 64, rel_tol=0.01)
+
+        # At end of training
+        for _ in range(900):
+            scheduler.step()
+        batch_size_at_1000 = scheduler.get_last_schedule("logical_batch_size")[0]
+        assert math.isclose(batch_size_at_1000, 256, rel_tol=0.01)
 
 
 if __name__ == "__main__":

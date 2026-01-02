@@ -9,12 +9,17 @@ documentation/optimizer_wrapper_api.md. All tests use black box methodology:
 - Never access implementation details
 """
 
+import math
 import pytest
 import torch
 import torch.nn as nn
-from torch_schedule_anything import arbitrary_schedule_factory
+from torch_schedule_anything import arbitrary_schedule_factory, SynchronousSchedule
 
-from src.gradient_quality_control.gradient_noise_scale import OptimizerWrapperGNS
+from src.gradient_quality_control.gradient_noise_scale import (
+    OptimizerWrapperGNS,
+    make_gns_with_cosine_annealing_schedule,
+    make_gns_default,
+)
 
 
 # =============================================================================
@@ -262,6 +267,227 @@ class TestStatisticsSmoke:
 
         vital_stats = optimizer.vital_statistics()
         assert isinstance(vital_stats, dict)
+
+
+# =============================================================================
+# Suite 5: Factory Tests
+# =============================================================================
+
+
+class TestMakeGNSWithCosineAnnealingSchedule:
+    """Test make_gns_with_cosine_annealing_schedule factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_gns_with_cosine_annealing_schedule)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperGNS, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gns_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_tolerance=0.95,
+            final_tolerance=0.25,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperGNS)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_wrapper_configuration(self):
+        """Wrapper is configured with correct parameters."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gns_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_tolerance=0.95,
+            final_tolerance=0.25,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            max_batch_draws=32,
+            distributed_mode="replicated",
+        )
+
+        # Verify wrapper accepts configuration
+        assert optimizer is not None
+
+    def test_lr_schedule_warmup_phase(self):
+        """Learning rate follows linear warmup during warmup phase."""
+        import math
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_gns_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_tolerance=0.95,
+            final_tolerance=0.25,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Test at beginning of warmup (step 1)
+        scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        # λ(t=1) = (W * t) / L = (1.0 * 1) / 100 = 0.01
+        expected_lr = initial_lr * (1.0 * 1) / 100
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+        # Test at mid-warmup (step 50)
+        for _ in range(49):
+            scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+        # λ(t=50) = (1.0 * 50) / 100 = 0.5
+        expected_lr = initial_lr * (1.0 * 50) / 100
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+    def test_lr_schedule_annealing_phase(self):
+        """Learning rate follows cosine annealing after warmup."""
+        import math
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_gns_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_tolerance=0.95,
+            final_tolerance=0.25,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Step to end of warmup (step 100)
+        for _ in range(100):
+            scheduler.step()
+
+        # At end of warmup: λ(100) = 1.0
+        current_lr = scheduler.get_last_lr()[0]
+        expected_lr = initial_lr * 1.0
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+        # Step to mid-annealing (step 550)
+        for _ in range(450):
+            scheduler.step()
+
+        current_lr = scheduler.get_last_lr()[0]
+        # λ(t=550) = A + (W - A) * cos(π/2 * (t-L)/(M-L))
+        # A=0.001, W=1.0, L=100, M=1000, t=550
+        # λ = 0.001 + (1.0 - 0.001) * cos(π/2 * 450/900)
+        # λ = 0.001 + 0.999 * cos(π/4) ≈ 0.001 + 0.999 * 0.707 ≈ 0.707
+        A, W, L, M, t = 0.001, 1.0, 100, 1000, 550
+        expected_lambda = A + (W - A) * math.cos(math.pi / 2 * (t - L) / (M - L))
+        expected_lr = initial_lr * expected_lambda
+        assert math.isclose(current_lr, expected_lr, rel_tol=0.01)
+
+    def test_tolerance_schedule_inverse_warmup(self):
+        """Noise tolerance follows inverse warmup during warmup phase."""
+        import math
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gns_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_tolerance=0.95,
+            final_tolerance=0.25,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            warmup_multiplier=10,
+        )
+
+        # At step 1: λ(1) = W * (R - (R-1) * t/L)
+        # W=0.95, R=10, t=1, L=100
+        # λ = 0.95 * (10 - 9 * 1/100) = 0.95 * 9.91 ≈ 9.4145
+        scheduler.step()
+        current_tolerance = scheduler.get_last_schedule("noise_tolerance")[0]
+        W, R, t, L = 0.95, 10, 1, 100
+        expected_lambda = W * (R - (R - 1) * t / L)
+        assert math.isclose(current_tolerance, expected_lambda, rel_tol=0.01)
+
+    def test_tolerance_schedule_annealing(self):
+        """Noise tolerance follows cosine annealing after warmup."""
+        import math
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gns_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            initial_tolerance=0.95,
+            final_tolerance=0.25,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Step to end of training
+        for _ in range(1000):
+            scheduler.step()
+
+        current_tolerance = scheduler.get_last_schedule("noise_tolerance")[0]
+        # At end: should be at final_tolerance
+        assert math.isclose(current_tolerance, 0.25, rel_tol=0.01)
+
+
+class TestMakeGNSDefault:
+    """Test make_gns_default factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_gns_default)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperGNS, scheduler) tuple."""
+        from torch_schedule_anything import SynchronousSchedule
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gns_default(
+            optimizer=base_optimizer,
+            tolerance=0.95,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperGNS)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_tolerance_constant_after_warmup(self):
+        """Noise tolerance stays constant after inverse warmup."""
+        import math
+
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gns_default(
+            optimizer=base_optimizer,
+            tolerance=0.95,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+        )
+
+        # Step past warmup
+        for _ in range(150):
+            scheduler.step()
+
+        tolerance_at_150 = scheduler.get_last_schedule("noise_tolerance")[0]
+
+        # Step further
+        for _ in range(200):
+            scheduler.step()
+
+        tolerance_at_350 = scheduler.get_last_schedule("noise_tolerance")[0]
+
+        # Should be constant (equal to tolerance)
+        assert math.isclose(tolerance_at_150, 0.95, rel_tol=0.01)
+        assert math.isclose(tolerance_at_350, 0.95, rel_tol=0.01)
+        assert math.isclose(tolerance_at_150, tolerance_at_350, rel_tol=0.001)
 
 
 if __name__ == "__main__":

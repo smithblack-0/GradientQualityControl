@@ -9,13 +9,16 @@ documentation/optimizer_wrapper_api.md. All tests use black box methodology:
 - Never access implementation details
 """
 
+import math
 import pytest
 import torch
 import torch.nn as nn
-from torch_schedule_anything import arbitrary_schedule_factory
+from torch_schedule_anything import arbitrary_schedule_factory, SynchronousSchedule
 
 from src.gradient_quality_control.gradient_norm_threshold_scheduler import (
     OptimizerWrapperGNTS,
+    make_gnts_with_cosine_annealing_schedule,
+    make_gnts_with_cosine_annealing_schedule_conventional_lr,
 )
 
 
@@ -271,6 +274,171 @@ class TestStatisticsSmoke:
 
         vital_stats = optimizer.vital_statistics()
         assert isinstance(vital_stats, dict)
+
+
+# =============================================================================
+# Suite 5: Factory Tests
+# =============================================================================
+
+
+class TestMakeGNTSWithCosineAnnealingSchedule:
+    """Test make_gnts_with_cosine_annealing_schedule factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_gnts_with_cosine_annealing_schedule)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperGNTS, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperGNTS)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_lr_constant_after_warmup(self):
+        """Learning rate stays constant after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        # At end of warmup
+        for _ in range(100):
+            scheduler.step()
+        lr_at_100 = scheduler.get_last_lr()[0]
+
+        # Much later in training
+        for _ in range(400):
+            scheduler.step()
+        lr_at_500 = scheduler.get_last_lr()[0]
+
+        # LR should be constant
+        assert math.isclose(lr_at_100, initial_lr, rel_tol=0.01)
+        assert math.isclose(lr_at_500, initial_lr, rel_tol=0.01)
+
+    def test_threshold_anneals_after_inverse_warmup(self):
+        """Gradient norm threshold anneals after inverse warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        # At end of training, threshold should be at final_threshold
+        for _ in range(1000):
+            scheduler.step()
+        threshold_at_end = scheduler.get_last_schedule("gradient_norm_threshold")[0]
+
+        assert math.isclose(threshold_at_end, 0.25, rel_tol=0.01)
+
+    def test_weight_decay_anneals_to_zero(self):
+        """Weight decay anneals to zero after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.01)
+        initial_wd = 0.01
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        wd_at_end = scheduler.get_last_schedule("weight_decay")[0]
+
+        # Should be near zero
+        assert wd_at_end < initial_wd * 0.1
+
+
+class TestMakeGNTSWithCosineAnnealingScheduleConventionalLR:
+    """Test make_gnts_with_cosine_annealing_schedule_conventional_lr factory."""
+
+    def test_factory_exists_and_callable(self):
+        """Factory function exists and is callable."""
+        assert callable(make_gnts_with_cosine_annealing_schedule_conventional_lr)
+
+    def test_returns_correct_types(self):
+        """Factory returns (OptimizerWrapperGNTS, scheduler) tuple."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        assert isinstance(optimizer, OptimizerWrapperGNTS)
+        assert isinstance(scheduler, SynchronousSchedule)
+
+    def test_lr_anneals_after_warmup(self):
+        """Learning rate anneals to zero after warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+        initial_lr = 0.01
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        lr_at_end = scheduler.get_last_lr()[0]
+
+        # Should anneal to near zero
+        assert lr_at_end < initial_lr * 0.1
+
+    def test_threshold_anneals_after_inverse_warmup(self):
+        """Gradient norm threshold anneals after inverse warmup."""
+        model = create_simple_model()
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+        optimizer, scheduler = make_gnts_with_cosine_annealing_schedule_conventional_lr(
+            optimizer=base_optimizer,
+            num_training_steps=1000,
+            num_warmup_steps=100,
+            initial_threshold=0.95,
+            final_threshold=0.25,
+        )
+
+        # At end of training
+        for _ in range(1000):
+            scheduler.step()
+        threshold_at_end = scheduler.get_last_schedule("gradient_norm_threshold")[0]
+
+        assert math.isclose(threshold_at_end, 0.25, rel_tol=0.01)
 
 
 if __name__ == "__main__":
