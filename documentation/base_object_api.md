@@ -279,7 +279,7 @@ for batch in pbar:
 ### state_dict
 
 ```python
-def state_dict(self) -> Dict[str, Any]
+def state_dict(self) -> Dict[str, Any]:
 ```
 
 The state_dict method serializes the complete optimizer wrapper state for checkpointing. Call this periodically during training to save checkpoints - if training crashes, gets preempted, or you want to resume later, you can restore to this exact point. This is PyTorch's standard checkpointing pattern extended to wrappers. The method captures everything needed for lossless resumption: all wrapper state (counters, algorithm parameters, cached metrics), the complete optimizer state (momentum buffers, adaptive learning rate state, etc.), and any other internal state.
@@ -452,35 +452,33 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 
 ### _get_state (Unified Access)
 
-Transparent access to both wrapper state (`num_batches`, custom thresholds) and optimizer state (`lr`, `weight_decay`) through one interface. Simplifies subclass implementation by eliminating manual source checking. Aggregates values if needed, or returns list.
+Transparent access to both wrapper state (`num_batches`, custom thresholds) and optimizer state (`lr`, `weight_decay`) through one interface. Simplifies subclass implementation by eliminating manual source checking.
 
-The _get_state method retrieves state from either the wrapper or the underlying optimizer through a single unified interface. Call this in your `step()` implementation to access algorithm parameters, counters, cached metrics, or optimizer hyperparameters. Used internally as well. Be cautious when implementing algorithms to use the most suitable aggregation mode. 
+The _get_state method retrieves state from either the wrapper or the underlying optimizer through a single unified interface. Call this in your `step()` implementation to access algorithm parameters, counters, cached metrics, or optimizer hyperparameters.
 
-This unified access pattern is particularly useful for subclass implementations that need to examine both wrapper state (like gradient norms or batch counts) and optimizer state (like current learning rate or weight decay). The method searches wrapper_states first, then falls back to optimizer.param_groups. For multi-group optimizers where a parameter differs across groups, the `aggregate_behavior` parameter controls how to aggregate: return the mean (default), max, min, or the raw list of values.
+This unified access pattern is particularly useful for subclass implementations that need to examine both wrapper state (like gradient norms or batch counts) and optimizer state (like current learning rate or weight decay). The method searches wrapper_states first, then falls back to optimizer.param_groups. For optimizer parameters, the `aggregate_behavior` parameter controls whether you receive a list of values or an aggregated scalar.
 
 ```python
-def _get_state(self, 
-               name: str, 
-               aggregate_behavior: Optional[Literal[ "mean", "max", "min"]] = None,
+def _get_state(self,
+               name: str,
+               aggregate_behavior: Optional[Literal["mean", "max", "min"]] = None,
                ) -> Any:
 ```
 
 **Parameters:**
 - `name` (str) - State variable name to retrieve
-- `aggregate_behavior` (Optional[Literal[mean", "max", "min"]]) - How to aggregate multi-group optimizer parameters. If None is passed in, it returns the raw list. 
-- 
+- `aggregate_behavior` (Optional[Literal["mean", "max", "min"]]) - How to aggregate optimizer parameters. If None, returns list. If mean/max/min, returns aggregated scalar. Default: None.
+
 **Returns:**
-- `Any` - The state value (just the value, not metadata). Will follow whatever aggregation pattern is specified.
+- `Any` - The state value. Wrapper states return stored value directly. Optimizer parameters return list (if aggregate_behavior=None) or aggregated scalar (if mean/max/min specified).
 
 **Contract - Search Order:**
 1. If `name` in `wrapper_states`: return that value (ignore aggregate_behavior)
 2. Else if `name` in `optimizer.param_groups`:
-   - All groups same value → return that value
-   - Groups have different values:
-     - `aggregate_behavior="mean"` → return mean
-     - `aggregate_behavior="max"` → return max
-     - `aggregate_behavior="min"` → return min
-     - `aggregate_behavior=None` → return list of values
+   - `aggregate_behavior=None` → return list of values from all param groups
+   - `aggregate_behavior="mean"` → return mean of values
+   - `aggregate_behavior="max"` → return max of values
+   - `aggregate_behavior="min"` → return min of values
 3. Else: throw error (not found)
 
 ### _batch_received (Protected)
@@ -580,23 +578,12 @@ def _get_metric(self,
 Whatever ended up at the end of the factory. 
 
 
-## Internal
-
-
-
-
-### __aggregate_list (Private)
-
-Used entirely internally in the base class to turn a gathered aggregated list into a float using a particular kind of aggregation. Not user serviceable. Not subclass serviceable. Handles tensor conversion and math.
-
 ```python
 def __aggregate_list(self, 
                      items: List[Union[torch.Tensor, float]],
                      aggregation: Literal["max", "min", "mean"],
                      )->float:
 ```
-
-
 
 
 ## Invariants
