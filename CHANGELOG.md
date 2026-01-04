@@ -11,7 +11,8 @@ Fixed inconsitancy between documentation, propogating through distributed metric
 - test_distributed_management_subsystem.py: Like mentioned. Also narrowing allowed error types and better checking of error message contents. Fixed major test bug: We were not testing we were raising under the correct context. 
 - Added scalar tensor tests into test_state_management_subsystems to keep to contract.
 - Added into test_gradient_accumulation_step_subsystem.py specifications on the right way to store state for reporting. Identified and fixed major test issue - test for if gradient accumulation averages did not, in fact, test it averages. This has been fixed.
-- 
+- Finished auditing test_reporting_subsystem.py. Spec is modified to aggregate even wrapper lists when possible; it reports STATISTICS after all. Tests modified to do so as well.
+- Finished auditing test_optimizer_mocking_mixin.py. No major issues detected, though there will likely be bugs we bring up later. One minor issue was detected on how one of the tests was implemented regarding initialization order. Fixed. 
 
 ## 0.9.7
 
