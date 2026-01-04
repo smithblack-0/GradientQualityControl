@@ -326,6 +326,41 @@ class TestEndToEndFunctionality:
         wrapper.param_groups[0]['lr'] = 0.05
         assert optimizer.param_groups[0]['lr'] == 0.05
 
+    def test_wrapper_extends_and_schedules_custom_params(self):
+        """Wrapper can extend optimizer and schedule custom parameters via ScheduleAnything."""
+        import torch_schedule_anything as tsa
+
+        optimizer = create_simple_optimizer()
+        wrapper = ConcreteWrapper(optimizer)
+
+        # Extend optimizer with custom parameter via wrapper
+        wrapper._set_state('gradient_clip_threshold', 10.0, 'optimizer')
+
+        # Verify it's in valid_schedule_targets
+        targets = wrapper.valid_schedule_targets
+        assert 'gradient_clip_threshold' in targets
+
+        # Verify it's in param_groups
+        assert optimizer.param_groups[0]['gradient_clip_threshold'] == 10.0
+
+        # Create a schedule for the custom parameter
+        scheduler = tsa.constant_schedule(
+            optimizer,
+            constant_value=0.5,  # Multiplier: 10.0 * 0.5 = 5.0
+            schedule_target='gradient_clip_threshold'
+        )
+        scheduler = tsa.SynchronousSchedule([scheduler])
+
+        # Step the schedule
+        scheduler.step()
+
+        # Verify the param_group value changed
+        assert optimizer.param_groups[0]['gradient_clip_threshold'] == 5.0
+
+        # Verify we can retrieve it through wrapper
+        threshold_values = wrapper._get_state('gradient_clip_threshold')
+        assert threshold_values == [5.0]
+
 
 # =============================================================================
 # Scheduler Integration Test Suite - tests ScheduleAnything integration

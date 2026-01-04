@@ -159,7 +159,7 @@ class TestConstructor:
                 assert flavor == "vital"
             if "num_steps" in key :
                 assert flavor == "vital"
-            if "num_draws" in key:
+            if "num_draws" in key and "last" not in key:
                 assert flavor == "optional"
             if "last_num_draws" in key:
                 assert flavor == "vital"

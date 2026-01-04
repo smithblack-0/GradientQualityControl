@@ -584,8 +584,6 @@ def __aggregate_list(self,
                      aggregation: Literal["max", "min", "mean"],
                      )->float:
 ```
-
-
 ## Invariants
 
 Properties that **must always hold:**
@@ -600,4 +598,7 @@ Properties that **must always hold:**
 8. **Namespace separation** - `_set_state()` cannot use optimizer param_group names
 9. **Immutable flags** - Vital/optional status cannot change once set
 11. **Starting state** - Counters are zero when initialized.
-12. **
+
+## More
+
+See more at [Base Object Implementation](base_object_implementation.md)
