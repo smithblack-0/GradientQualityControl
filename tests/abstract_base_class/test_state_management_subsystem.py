@@ -146,7 +146,7 @@ class TestGetStateOptimizerParams:
         state_mgr = StateManagementSubsystem(optimizer)
         optimizer.param_groups[0]["test_metric"] = torch.tensor(42.0)
 
-        test_list = state_mgr.get_state("test_list")
+        test_list = state_mgr.get_state("test_metric")
         assert isinstance(test_list, list)
         assert len(test_list) == 1
         assert test_list[0] == torch.tensor(42.0)
