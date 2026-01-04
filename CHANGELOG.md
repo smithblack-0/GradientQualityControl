@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.9
+
+**Human auditing and corrections stage**
+
+The orchestrator main system tests were found to be DRAMATICALLY overcoupled, and had to be redone to emphasize testing of contract compliance and integration. The integration tests in abstract optimizer wrapper needed minor tweaks. 
+
+
+
 ## 0.9.8
 
 **Human Auditing and Corrections Stage**
