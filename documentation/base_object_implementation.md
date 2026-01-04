@@ -177,9 +177,9 @@ def get_metric(self, name: str, *args, **kwargs) -> Any:
 
 - If `name` is not registered, throw with message indicating failure at **metric lookup**.
 - If metric reader execution fails, throw with message indicating failure at **metric read**.
-- If distributed mode is `None` and error occurs throw specific error indicating origin from default context
-- If distributed mode is `"replicated"` and error occurs throw specific error indicating origin from replicated context
-- If distributed mode is `"sharded"` and error occurs throw specific error indicating origin from sharded context.
+- If merging and distributed mode is `None` and error occurs throw specific error indicating origin from default context
+- If  merging and distributed mode is `"replicated"` and error occurs throw specific error indicating origin from replicated context
+- If merging and distributed mode is `"sharded"` and error occurs throw specific error indicating origin from sharded context.
 
 ### GradientAccumulationStepSubsystem
 

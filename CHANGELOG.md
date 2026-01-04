@@ -5,6 +5,8 @@
 **Human Auditing and Corrections Stage**
 
 - Fixed inconsitancy between documentation, propogating through distributed metrics subsystem test, involving typing; Used claude for patching with auditing. 
+- test_step_management_subsystem.py: Now passes audit. Primarily we added tests for tensor cases, and made error types a bit more specific and clear. 
+- test_distributed_management_subsystem.py: Like mentioned. Also narrowing allowed error types and better checking of error message contents. Fixed major test bug: We were not testing we were raising under the correct context. 
 - Added scalar tensor tests into test_state_management_subsystems to keep to contract.
 - 
 

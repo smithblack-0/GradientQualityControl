@@ -379,18 +379,20 @@ class TestGetMetricErrors:
         """get_metric() throws error when metric not registered."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state=None)
 
-        with pytest.raises((KeyError, RuntimeError, ValueError)):
+        with pytest.raises(KeyError):
             subsystem.get_metric("nonexistent_metric")
 
     def test_get_metric_error_message_indicates_metric_lookup_failure(self):
         """get_metric() error for unregistered metric mentions 'metric lookup'."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state=None)
 
-        with pytest.raises((KeyError, RuntimeError, ValueError)) as exc_info:
+        with pytest.raises(KeyError) as exc_info:
             subsystem.get_metric("missing")
 
         error_message = str(exc_info.value).lower()
-        assert "metric lookup" in error_message or "lookup" in error_message
+        assert "metric" in error_message
+        assert "lookup" in error_message
+        assert "failed" in error_message
 
     def test_get_metric_throws_when_reader_fails(self):
         """get_metric() propagates error when metric_reader raises."""
@@ -413,47 +415,75 @@ class TestGetMetricErrors:
             subsystem.get_metric("test")
 
         error_message = str(exc_info.value).lower()
-        assert "metric read" in error_message or "read" in error_message
+        assert "metric" in error_message
+        assert "read" in error_message
+        assert "failed" in error_message
 
     def test_get_metric_error_indicates_none_context(self):
         """get_metric() error with mode=None indicates default/none context."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state=None)
 
-        failing_reader = create_failing_callable(RuntimeError, "Test")
-        subsystem.bind_metric("test", failing_reader, lambda x: x, lambda x: x, lambda x: x)
+        reader = create_metric_reader(value=99.0)
+        failing_merger = create_failing_callable(RuntimeError, "Test")
+        subsystem.bind_metric("test", reader, lambda x: x, lambda x: x, failing_merger)
 
         with pytest.raises(RuntimeError) as exc_info:
             subsystem.get_metric("test")
 
-        error_message = str(exc_info.value).lower()
-        # Should mention default/none/normal context
-        assert any(word in error_message for word in ["default", "none", "normal", "non-distributed"])
+        err = exc_info.value
+        error_message = str(err).lower()
+
+        # Should mention the single device configuration.
+        assert "single device pathway" in error_message
+        assert "failed" in error_message
+        assert "merging" in error_message
+        assert "metric" in error_message
+        assert err.__cause__ is not None
+        assert str(err.__cause__) == "Test"
 
     def test_get_metric_error_indicates_replicated_context(self):
         """get_metric() error with mode='replicated' indicates replicated context."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state="replicated")
 
-        failing_reader = create_failing_callable(RuntimeError, "Test")
-        subsystem.bind_metric("test", failing_reader, lambda x: x, lambda x: x, lambda x: x)
+        reader = create_metric_reader(value=99.0)
+        failing_merger = create_failing_callable(RuntimeError, "Test")
+        subsystem.bind_metric("test", reader, failing_merger, lambda x: x, lambda x: x)
 
         with pytest.raises(RuntimeError) as exc_info:
             subsystem.get_metric("test")
 
-        error_message = str(exc_info.value).lower()
-        assert "replicated" in error_message
+        err = exc_info.value
+        error_message = str(err).lower()
+
+        # Should mention the configuration.
+        assert "replicated distributed pathway" in error_message
+        assert "failed" in error_message
+        assert "metric" in error_message
+        assert "merging" in error_message
+        assert err.__cause__ is not None
+        assert str(err.__cause__) == "Test"
 
     def test_get_metric_error_indicates_sharded_context(self):
         """get_metric() error with mode='sharded' indicates sharded context."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state="sharded")
 
-        failing_reader = create_failing_callable(RuntimeError, "Test")
-        subsystem.bind_metric("test", failing_reader, lambda x: x, lambda x: x, lambda x: x)
+        reader = create_metric_reader(value=99.0)
+        failing_merger = create_failing_callable(RuntimeError, "Test")
+        subsystem.bind_metric("test", reader, lambda x: x, failing_merger, lambda x: x)
 
         with pytest.raises(RuntimeError) as exc_info:
             subsystem.get_metric("test")
 
-        error_message = str(exc_info.value).lower()
-        assert "sharded" in error_message
+        err = exc_info.value
+        error_message = str(err).lower()
+
+        # Should mention the configuration.
+        assert "sharded distributed pathway" in error_message
+        assert "failed" in error_message
+        assert "metric" in error_message
+        assert "merging" in error_message
+        assert err.__cause__ is not None
+        assert str(err.__cause__) == "Test"
 
 
 # =============================================================================
