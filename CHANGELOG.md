@@ -4,10 +4,13 @@
 
 **Human Auditing and Corrections Stage**
 
-- Fixed inconsitancy between documentation, propogating through distributed metrics subsystem test, involving typing; Used claude for patching with auditing. 
+Fixed inconsitancy between documentation, propogating through distributed metrics subsystem test, involving typing; Used claude for patching with auditing. Generally, fixed the issues claude left behind. 
+
+
 - test_step_management_subsystem.py: Now passes audit. Primarily we added tests for tensor cases, and made error types a bit more specific and clear. 
 - test_distributed_management_subsystem.py: Like mentioned. Also narrowing allowed error types and better checking of error message contents. Fixed major test bug: We were not testing we were raising under the correct context. 
 - Added scalar tensor tests into test_state_management_subsystems to keep to contract.
+- Added into test_gradient_accumulation_step_subsystem.py specifications on the right way to store state for reporting. Identified and fixed major test issue - test for if gradient accumulation averages did not, in fact, test it averages. This has been fixed.
 - 
 
 ## 0.9.7
