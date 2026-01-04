@@ -6,7 +6,8 @@
 
 The orchestrator main system tests were found to be DRAMATICALLY overcoupled, and had to be redone to emphasize testing of contract compliance and integration. The integration tests in abstract optimizer wrapper needed minor tweaks. 
 
-
+- Refactored opchestrator_main_system.py dramatically, then audited and approved it
+- Removed some black box contract violations from test_abstract_optimizer_wrapper.py, then approved it. 
 
 ## 0.9.8
 
