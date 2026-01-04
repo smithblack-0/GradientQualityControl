@@ -148,9 +148,9 @@ def bind_metric(
     self,
     name: str,
     metric_reader: Callable[..., Any],
-    normal_merger: Callable[[Any], Any],
     replicated_merger: Callable[[Any], Any],
     sharded_merger: Callable[[Any], Any],
+    normal_merger: Callable[[Any], Any],
 ) -> None:
 ```
 
@@ -179,7 +179,7 @@ def get_metric(self, name: str, *args, **kwargs) -> Any:
 - If metric reader execution fails, throw with message indicating failure at **metric read**.
 - If distributed mode is `None` and error occurs throw specific error indicating origin from default context
 - If distributed mode is `"replicated"` and error occurs throw specific error indicating origin from replicated context
-- If distributed mode is `"sharded"` and error occurs throw specific error indicating origin from default context.
+- If distributed mode is `"sharded"` and error occurs throw specific error indicating origin from sharded context.
 
 ### GradientAccumulationStepSubsystem
 
@@ -678,12 +678,13 @@ Register metric and its distributed resolution rules.
 def _bind_metric(self,
                  name: str,
                  metric_reader: Callable[..., Any],
-                 normal_merger: Callable[[Any], Any],
                  replicated_merger: Callable[[Any], Any],
-                 sharded_merger: Callable[[Any], Any]) -> None:
+                 sharded_merger: Callable[[Any], Any],
+                 normal_merger: Callable[[Any], Any] = lambda x : x,
+) -> None:
 ```
 
-Forwards to `_distributed_metrics.bind_metric(name, metric_reader, normal_merger, replicated_merger, sharded_merger)`.
+Forwards to `_distributed_metrics.bind_metric(name, metric_reader, replicated_merger, sharded_merger, normal_merger)`. However, provides a default passthrough for normal merger.
 
 **_get_metric**
 
@@ -692,6 +693,7 @@ Resolve metric value with distributed execution handling.
 ```python
 def _get_metric(self, name: str, *args, **kwargs) -> Any:
 ```
+
 
 Forwards to `_distributed_metrics.get_metric(name, *args, **kwargs)`.
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.9.8
+
+**Human Auditing and Corrections Stage**
+
+- Fixed inconsitancy between documentation, propogating through distributed metrics subsystem test, involving typing; Used claude for patching with auditing. 
+- Added scalar tensor tests into test_state_management_subsystems to keep to contract.
+- 
+
+## 0.9.7
+
+**Integration Tests with Distributed Synchronization and Test Organization**
+
+- Implemented `test_abstract_optimizer_wrapper.py`: End-to-end integration tests with real subclassing
+- Added distributed synchronization tests using `torch.multiprocessing` with CPU-only gloo backend
+- Tests verify metric consensus across ranks and correct aggregation (mean for replicated, sum for sharded)
+- Reorganized tests into `abstract_base_class/` and `concrete_implementations/` directories
+- Updated `CLAUDE.md` with comment style guide (role-based names, complete sentences, no numbered enumeration)
+
+## 0.9.6
+
+**Test Suites for Remaining Subsystems**
+
+- Implemented `test_gradient_accumulation_step_subsystem.py`: Tests counter management, gradient averaging, stepping mechanics
+- Implemented `test_reporting_subsystem.py`: Tests statistics generation, aggregation, filtering
+- Implemented `test_optimizer_mocking_mixin.py`: Tests attribute forwarding and initialization phases
+- Implemented `test_orchestrator_main_system.py`: Integration tests for subsystem coordination via dependency injection
+
+## 0.9.5
+
+**Test Suites for State Management and Distributed Metrics, Architectural Fix**
+
+- Implemented `test_state_management_subsystem.py` and `test_distributed_metrics_subsystem.py`
+- Discovered aggregation logic was incorrectly placed in StateManagementSubsystem
+- Refactored documentation to move aggregation to ReportingSubsystem where it belongs
+- Updated `StateManagementSubsystem.get_state()` to return raw lists for optimizer params
+- Updated `base_object_api.md` to maintain contract abstraction while reflecting architecture change
+
+## 0.9.4
+
+**Unfolded base_object_api into base_object_implementation**
+
+- Decomposed AbstractOptimizerWrapper into 7 subsystems with implementation contracts in `base_object_implementation.md`:
+  - StateManagementSubsystem: Handles all state storage and serialization
+  - DistributedMetricsManagementSubsystem: Manages metric binding and distributed synchronization
+  - GradientAccumulationStepSubsystem: Controls gradient accumulation mechanics and optimizer stepping
+  - ReportingSubsystem: Generates statistics and vital statistics reports
+  - OptimizerMockingMixin: Provides transparent optimizer duck-typing via attribute forwarding
+  - OrchestratorMainSystem: Main facade coordinating subsystems via dependency injection
+  - AbstractOptimizerWrapper: User-facing class with auto-construction
+
 ## 0.9.3
 
 **Factory Function Test Coverage**
