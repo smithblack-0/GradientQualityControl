@@ -321,17 +321,18 @@ def aggregate_numeric_list(self,
 
 **statistics**
 
-Generates complete or filtered statistics dictionary from available state. Implemented using aggregate_numeric_list() for optimizer parameters.
+Generates complete or filtered statistics dictionary from available state. Implemented using aggregate_numeric_list() for lists. 
 
 ```python
 def statistics(self,
                behavior: Literal["vital", "verbose"] = "verbose",
-               aggregate_behavior: Literal["mean", "max", "min"] = "mean") -> Dict[str, Any]:
+               aggregate_behavior: Literal["mean", "max", "min"] = "mean"
+               ) -> Dict[str, Any]:
 ```
 
 **Parameters:**
 - `behavior` - "verbose" includes all state (vital, optional, optimizer). "vital" includes only vital and optimizer state.
-- `aggregate_behavior` - How to aggregate multi-group optimizer parameters when values differ
+- `aggregate_behavior` - How to aggregate multi-group hyperparameters or states when values differ
 
 1. Call `state_manager.show_state()` to get list of (name, flag) tuples
 2. Filter based on behavior:
@@ -339,14 +340,15 @@ def statistics(self,
    - "vital": include only entries where flag is "vital" or "optimizer"
 3. For each remaining entry:
    - Call `state_manager.get_state(name)` to retrieve value
-   - If value is a list (optimizer param from multiple groups):
+   - If value is numeric:
+     - Add to result dict with key and value as-is
+   - If value is a list:
      - Check if all values in list are equal
      - If all equal: add to result dict with key name, value is the scalar
      - If not all equal:
        - Use `aggregate_numeric_list(value, aggregate_behavior)` to aggregate
        - Add to result dict with key name + "*" suffix (e.g., "lr*")
-   - Else (wrapper state, not a list):
-     - Add to result dict with key and value as-is
+   - Skip if fails.
 4. Return dictionary
 
 **vital_statistics**
