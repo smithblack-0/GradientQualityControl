@@ -92,9 +92,9 @@ class TestConstructor:
         """Constructor calls _finalize_initialization() to complete setup."""
         orchestrator, optimizer, _, _, _, _ = create_orchestrator_with_subsystems()
 
-        # After construction, should not be able to set wrapper attributes
-        with pytest.raises(RuntimeError):
-            orchestrator.new_attr = "test"
+        # After construction, new attributes should forward to optimizer
+        orchestrator.new_attr = "test"
+        assert optimizer.new_attr == "test"
 
 
 # =============================================================================
@@ -225,10 +225,10 @@ class TestPublicMethods:
 
         # Setup through orchestrator
         orchestrator._set_state('counter', 100, 'vital')
+        orchestrator._set_state('banana', 3.0, 'optional')
 
         # Get state dict from orchestrator
         state_dict = orchestrator.state_dict()
-        state_dict["banana"] = 3.0
 
         assert isinstance(state_dict, dict)
         assert 'wrapper_states' in state_dict
@@ -324,6 +324,28 @@ class TestProtectedMethods:
 
         # Should not raise
         orchestrator._bind_metric('test_metric', reader, merger, merger, merger)
+
+    def test_bind_metric_uses_default_passthrough_for_normal_merger(self):
+        """_bind_metric() uses passthrough lambda when normal_merger not provided."""
+        orchestrator, _, _, _, _, _ = create_orchestrator_with_subsystems(distributed_mode=None)
+
+        def reader():
+            return 42.0
+
+        def replicated_merger(x):
+            return x * 2
+
+        def sharded_merger(x):
+            return x * 3
+
+        # Bind with only 3 functions - should use default passthrough for normal
+        orchestrator._bind_metric('test_metric', reader, replicated_merger, sharded_merger)
+
+        # With distributed_mode=None, should use normal_merger (the default passthrough)
+        result = orchestrator._get_metric('test_metric')
+
+        # Should be 42.0 (no transformation from passthrough)
+        assert result == 42.0
 
     def test_get_metric_forwards_to_distributed_metrics(self):
         """_get_metric() forwards to distributed metrics subsystem."""
@@ -469,7 +491,7 @@ class TestIntegration:
         def sharded_merger(x):
             return x * 1000
 
-        orchestrator._bind_metric('test', reader, normal_merger, replicated_merger, sharded_merger)
+        orchestrator._bind_metric('test', reader, replicated_merger, sharded_merger, normal_merger)
 
         # Get metric should use replicated merger
         result = orchestrator._get_metric('test')

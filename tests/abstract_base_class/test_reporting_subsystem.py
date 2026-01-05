@@ -141,6 +141,30 @@ class TestAggregateNumericList:
         assert subsystem.aggregate_numeric_list(values, "max") == 42.0
         assert subsystem.aggregate_numeric_list(values, "min") == 42.0
 
+    def test_aggregate_numeric_list_handles_tensor_values(self):
+        """aggregate_numeric_list converts scalar tensors to Python numbers."""
+        optimizer = create_optimizer_with_uniform_param_groups()
+        state_mgr = StateManagementSubsystem(optimizer)
+        subsystem = ReportingSubsystem(state_mgr)
+
+        values = [torch.tensor(1.0), torch.tensor(2.0), torch.tensor(3.0)]
+        result = subsystem.aggregate_numeric_list(values, "mean")
+
+        assert result == 2.0
+        assert isinstance(result, (int, float))
+
+    def test_aggregate_numeric_list_handles_mixed_numbers_and_tensors(self):
+        """aggregate_numeric_list handles mix of Python numbers and tensors."""
+        optimizer = create_optimizer_with_uniform_param_groups()
+        state_mgr = StateManagementSubsystem(optimizer)
+        subsystem = ReportingSubsystem(state_mgr)
+
+        values = [1.0, torch.tensor(2.0), 3, torch.tensor(4.0)]
+        result = subsystem.aggregate_numeric_list(values, "mean")
+
+        assert result == 2.5
+        assert isinstance(result, (int, float))
+
 
 # =============================================================================
 # Statistics Test Suite - tests that statistics method filters and aggregates correctly
@@ -309,6 +333,49 @@ class TestStatistics:
 
         # Should use mean aggregation (0.01 + 0.02 + 0.03) / 3 = 0.02
         assert result['lr*'] == 0.02
+
+    def test_statistics_converts_scalar_tensor_wrapper_state(self):
+        """statistics converts scalar tensor wrapper state to Python number."""
+        optimizer = create_optimizer_with_uniform_param_groups()
+        state_mgr = StateManagementSubsystem(optimizer)
+        subsystem = ReportingSubsystem(state_mgr)
+
+        state_mgr.set_state('tensor_value', torch.tensor(42.5), 'vital')
+
+        result = subsystem.statistics(behavior='verbose')
+
+        assert result['tensor_value'] == 42.5
+        assert isinstance(result['tensor_value'], (int, float))
+
+    def test_statistics_converts_tensor_in_uniform_list(self):
+        """statistics converts uniform list of tensors to scalar Python number."""
+        optimizer = create_optimizer_with_uniform_param_groups()
+        state_mgr = StateManagementSubsystem(optimizer)
+        subsystem = ReportingSubsystem(state_mgr)
+
+        # Simulate multi-group optimizer param with same tensor value
+        state_mgr.set_state('uniform_tensor_list', [torch.tensor(1.5), torch.tensor(1.5)], 'vital')
+
+        result = subsystem.statistics(behavior='verbose')
+
+        # Should not have * suffix since all equal
+        assert result['uniform_tensor_list'] == 1.5
+        assert isinstance(result['uniform_tensor_list'], (int, float))
+
+    def test_statistics_aggregates_tensor_list_with_suffix(self):
+        """statistics aggregates non-uniform tensor list and adds * suffix."""
+        optimizer = create_optimizer_with_uniform_param_groups()
+        state_mgr = StateManagementSubsystem(optimizer)
+        subsystem = ReportingSubsystem(state_mgr)
+
+        # Non-uniform tensor list
+        state_mgr.set_state('nonuniform_tensors', [torch.tensor(1.0), torch.tensor(3.0)], 'vital')
+
+        result = subsystem.statistics(behavior='verbose', aggregate_behavior='mean')
+
+        # Should have * suffix and be aggregated
+        assert result['nonuniform_tensors*'] == 2.0
+        assert isinstance(result['nonuniform_tensors*'], (int, float))
 
 
 # =============================================================================
