@@ -246,7 +246,7 @@ Called when a batch is processed. Updates counters and enforces accumulation bou
 def batch_received(self) -> None:
 ```
 
-1. Retrieve current num_draws from state_manager
+1. Retrieve current num_draws from state_managerWht
 2. If num_draws >= max_draws: raise RuntimeError indicating max accumulation exceeded
 3. Increment num_batches by 1 via state_manager
 4. Increment num_draws by 1 via state_manager
@@ -307,17 +307,26 @@ Aggregates a list of numeric values using specified strategy.
 
 ```python
 def aggregate_numeric_list(self,
-                          values: List[Number],
+                          values: List[Union[Number, torch.Tensor]],
                           behavior: Literal["mean", "max", "min"]) -> Number:
 ```
 
 **Parameters:**
-- `values` - List of numeric values (Number type from numbers module)
+- `values` - List of numeric values (Number type from numbers module or scalar torch.Tensor)
 - `behavior` - Aggregation strategy: "mean", "max", or "min"
 
-1. If behavior is "mean": return mean of values
-2. If behavior is "max": return max of values
-3. If behavior is "min": return min of values
+**Returns:**
+- Python numeric value (int or float), never torch.Tensor
+
+**Tensor Handling:**
+- Scalar tensors are converted to Python numbers via `.item()`
+- Mixed lists of Numbers and tensors are supported
+- Output is always a Python numeric type for JSON-serializability
+
+1. Convert all values (tensors and Numbers) to Python numbers
+2. If behavior is "mean": return mean of values
+3. If behavior is "max": return max of values
+4. If behavior is "min": return min of values
 
 **statistics**
 
@@ -334,21 +343,40 @@ def statistics(self,
 - `behavior` - "verbose" includes all state (vital, optional, optimizer). "vital" includes only vital and optimizer state.
 - `aggregate_behavior` - How to aggregate multi-group hyperparameters or states when values differ
 
+**Returns:**
+- Dictionary with all values as Python native types (no torch.Tensors)
+
+**Tensor Handling:**
+- Scalar tensors are converted to Python numbers via `.item()`
+- List entries containing tensors are converted element-wise
+- Ensures all output values are JSON-serializable
+
 1. Call `state_manager.show_state()` to get list of (name, flag) tuples
 2. Filter based on behavior:
    - "verbose": include all entries
    - "vital": include only entries where flag is "vital" or "optimizer"
 3. For each remaining entry:
    - Call `state_manager.get_state(name)` to retrieve value
-   - If value is numeric:
-     - Add to result dict with key and value as-is
    - If value is a list:
      - Check if all values in list are equal
-     - If all equal: add to result dict with key name, value is the scalar
+     - If all equal:
+       - Extract the scalar value
+       - If scalar is a tensor, convert to Python number via `.item()`
+       - Add to result dict with key name, value is the Python number or scalar
      - If not all equal:
        - Use `aggregate_numeric_list(value, aggregate_behavior)` to aggregate
+       - (Note: aggregate_numeric_list internally converts any tensors to Python numbers)
        - Add to result dict with key name + "*" suffix (e.g., "lr*")
-   - Skip if fails.
+   - If value is a scalar tensor:
+     - Convert to Python number via `.item()` and add to result dict
+   - If value is a Number:
+     - Add to result dict as-is
+   - If value is a string AND flag is "vital" or "optional":
+     - Add to result dict (allows metadata in wrapper state)
+     - Optimizer params (flag="optimizer") cannot be strings - they must be numeric
+   - All other types (None, objects, non-scalar tensors, etc.):
+     - Omitted from result
+   - Skip if retrieval or processing fails.
 4. Return dictionary
 
 **vital_statistics**
