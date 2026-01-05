@@ -17,6 +17,7 @@ Test organization:
 - Device property
 """
 import pytest
+import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -44,6 +45,15 @@ class ConcreteWrapper(AbstractOptimizerWrapper):
         if should_step:
             self._take_optimizer_step()
         return should_step
+
+
+class NoStepWrapper(AbstractOptimizerWrapper):
+    """Wrapper that accumulates without stepping - for testing max_draws enforcement."""
+
+    def step(self, *args, **kwargs):
+        """Just accumulate, never step."""
+        self._batch_received()
+        return False
 
 
 def create_simple_optimizer():
@@ -92,7 +102,7 @@ def distributed_worker(rank, world_size, distributed_mode, output_dir, master_ad
             return tensor.item()
 
         # Bind metric
-        wrapper._bind_metric('test_metric', metric_reader, normal_merger, replicated_merger, sharded_merger)
+        wrapper._bind_metric('test_metric', metric_reader, replicated_merger, sharded_merger, normal_merger)
 
         # Get metric (should synchronize across ranks)
         result = wrapper._get_metric('test_metric')
@@ -181,6 +191,27 @@ class TestConstructor:
         wrapper = ConcreteWrapper(optimizer, distributed_mode=None)
 
         assert wrapper.distributed_mode is None
+
+    @pytest.mark.distributed
+    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    def test_constructor_raises_when_distributed_initialized_without_mode(self):
+        """Constructor raises RuntimeError when distributed is initialized but distributed_mode is None."""
+        optimizer = create_simple_optimizer()
+
+        # Initialize distributed process group
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = str(random.randint(29500, 29600))
+        os.environ['RANK'] = '0'
+        os.environ['WORLD_SIZE'] = '1'
+
+        dist.init_process_group(backend='gloo', rank=0, world_size=1)
+
+        try:
+            # Should raise RuntimeError because distributed is initialized but distributed_mode is None
+            with pytest.raises(RuntimeError, match="(?i).*distributed.*"):
+                ConcreteWrapper(optimizer, distributed_mode=None)
+        finally:
+            dist.destroy_process_group()
 
 
 # =============================================================================
@@ -285,7 +316,7 @@ class TestEndToEndFunctionality:
     def test_max_draws_enforcement(self):
         """max_draws bound is enforced during accumulation."""
         optimizer = create_simple_optimizer()
-        wrapper = ConcreteWrapper(optimizer, max_draws=3)
+        wrapper = NoStepWrapper(optimizer, max_draws=3)
 
         # Accumulate to max
         for _ in range(3):
@@ -346,7 +377,7 @@ class TestEndToEndFunctionality:
         # Create a schedule for the custom parameter
         scheduler = tsa.constant_schedule(
             optimizer,
-            constant_value=0.5,  # Multiplier: 10.0 * 0.5 = 5.0
+            value=0.5,  # Multiplier: 10.0 * 0.5 = 5.0
             schedule_target='gradient_clip_threshold'
         )
         scheduler = tsa.SynchronousSchedule([scheduler])
@@ -404,6 +435,8 @@ class TestSchedulerIntegration:
 class TestDistributedSynchronization:
     """Test distributed metric synchronization across multiple processes."""
 
+    @pytest.mark.distributed
+    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
     def test_replicated_mode_averages_metrics_across_ranks(self):
         """Replicated mode averages metrics across all ranks and all ranks agree."""
         world_size = 3
@@ -434,6 +467,8 @@ class TestDistributedSynchronization:
             expected = sum(inputs) / len(inputs)
             assert abs(results[0] - expected) < 1e-6, f"Expected {expected}, got {results[0]}"
 
+    @pytest.mark.distributed
+    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
     def test_sharded_mode_sums_metrics_across_ranks(self):
         """Sharded mode sums metrics across all ranks and all ranks agree."""
         world_size = 3
@@ -464,6 +499,8 @@ class TestDistributedSynchronization:
             expected = sum(inputs)
             assert abs(results[0] - expected) < 1e-6, f"Expected {expected}, got {results[0]}"
 
+    @pytest.mark.distributed
+    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
     def test_different_ranks_produce_consensus(self):
         """Different input values from each rank still produce consensus result."""
         world_size = 4
