@@ -15,7 +15,7 @@ class DistributedMetricsManagementSubsystem:
     configured distributed execution mode (None, replicated, or sharded).
     """
 
-    def __init__(self, distributed_state: Optional[Literal["replicated", "sharded"]]):
+    def __init__(self, distributed_state: Optional[Literal["replicated", "sharded"]],):
         """
         Initialize distributed metrics subsystem.
 
@@ -83,7 +83,7 @@ class DistributedMetricsManagementSubsystem:
             "normal_merger": normal_merger,
         }
 
-    def get_metric(self, name: str, *args, **kwargs) -> Any:
+    def get_metric(self, name: str, *args, **kwargs,) -> Any:
         """
         Resolve a metric value based on distributed mode.
 

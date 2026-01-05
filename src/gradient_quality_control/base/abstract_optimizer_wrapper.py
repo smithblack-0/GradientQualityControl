@@ -27,7 +27,7 @@ class AbstractOptimizerWrapper(OrchestratorMainSystem):
         self,
         optimizer: torch.optim.Optimizer,
         max_draws: int = 64,
-        distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+        distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
     ):
         """
         Initialize wrapper with automatic subsystem construction.

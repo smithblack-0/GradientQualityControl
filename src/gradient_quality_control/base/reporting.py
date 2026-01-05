@@ -11,7 +11,7 @@ from numbers import Number
 from .state_management import StateManagementSubsystem
 
 
-def _to_python_number(value: Union[Number, torch.Tensor]) -> Number:
+def _to_python_number(value: Union[Number, torch.Tensor],) -> Number:
     """Convert tensor or Number to Python number."""
     if isinstance(value, torch.Tensor):
         return value.item()
@@ -25,7 +25,7 @@ class ReportingSubsystem:
     Queries StateManagementSubsystem and formats state for reporting.
     """
 
-    def __init__(self, state_manager: StateManagementSubsystem):
+    def __init__(self, state_manager: StateManagementSubsystem,):
         """
         Initialize reporting subsystem.
 
@@ -40,7 +40,7 @@ class ReportingSubsystem:
     def aggregate_numeric_list(
         self,
         values: List[Union[Number, torch.Tensor]],
-        behavior: Literal["mean", "max", "min"]
+        behavior: Literal["mean", "max", "min"],
     ) -> Number:
         """
         Aggregate a list of numeric values using specified strategy.
@@ -67,7 +67,7 @@ class ReportingSubsystem:
     def statistics(
         self,
         behavior: Literal["vital", "verbose"] = "verbose",
-        aggregate_behavior: Literal["mean", "max", "min"] = "mean"
+        aggregate_behavior: Literal["mean", "max", "min"] = "mean",
     ) -> Dict[str, Any]:
         """
         Generate statistics dictionary from available state.
@@ -127,7 +127,7 @@ class ReportingSubsystem:
 
     def vital_statistics(
         self,
-        aggregate_behavior: Literal["mean", "max", "min"] = "mean"
+        aggregate_behavior: Literal["mean", "max", "min"] = "mean",
     ) -> Dict[str, Any]:
         """
         Generate curated vital statistics for real-time monitoring.

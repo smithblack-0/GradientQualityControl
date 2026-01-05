@@ -23,7 +23,7 @@ class GradientAccumulationStepSubsystem:
         self,
         state_manager: StateManagementSubsystem,
         optimizer: torch.optim.Optimizer,
-        max_draws: int = 64
+        max_draws: int = 64,
     ):
         """
         Initialize gradient accumulation subsystem.

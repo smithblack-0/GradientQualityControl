@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torch-gqc"
-version = "0.9.3"
+version = "0.10.4"
 description = "Adaptive gradient accumulation for improved training efficiency"
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,6 +28,7 @@ dependencies = [
     "torch>=2.0.0",
     "numpy>=1.20.0",
     "scipy>=1.7.0",
+    "torch-schedule-anything>=0.10.0",
 ]
 
 [project.optional-dependencies]
@@ -58,3 +59,8 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 ignore = ["F401"]
+
+[tool.pytest.ini_options]
+markers = [
+    "distributed: marks tests as requiring distributed setup (deselect with '-m \"not distributed\"')",
+]

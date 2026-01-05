@@ -28,7 +28,7 @@ class OptimizerMockingMixin:
         """
         object.__setattr__(self, '_initialized', True)
 
-    def __getattribute__(self, name: str) -> Any:
+    def __getattribute__(self, name: str,) -> Any:
         """
         Forward attribute access to wrapped optimizer while preserving wrapper's interface.
 
@@ -65,7 +65,7 @@ class OptimizerMockingMixin:
         optimizer = instance_dict['_optimizer']
         return getattr(optimizer, name)
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setattr__(self, name: str, value: Any,) -> None:
         """
         Forward attribute assignment to wrapped optimizer while allowing initialization.
 

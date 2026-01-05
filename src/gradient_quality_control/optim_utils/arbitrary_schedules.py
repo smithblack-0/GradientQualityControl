@@ -23,7 +23,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import StateDict
 
-from optim_utils import optimizer_extend
+from .optimizer_utils import optimizer_extend
 
 # ================================================================================
 # Error Control. The ability to manipulate the error context this system

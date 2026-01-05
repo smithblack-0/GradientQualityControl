@@ -28,7 +28,7 @@ class StateManagementSubsystem:
     Handles serialization and ScheduleAnything integration.
     """
 
-    def __init__(self, optimizer: torch.optim.Optimizer):
+    def __init__(self, optimizer: torch.optim.Optimizer,):
         """
         Initialize state management subsystem.
 
@@ -38,7 +38,7 @@ class StateManagementSubsystem:
         self.optimizer = optimizer
         self.wrapper_states: Dict[str, Dict[str, Any]] = {}  # {name: {"value": ..., "flag": ...}}
 
-    def get_state(self, name: str) -> Any:
+    def get_state(self, name: str,) -> Any:
         """
         Retrieve state value by name.
 
@@ -73,7 +73,7 @@ class StateManagementSubsystem:
 
         return values
 
-    def set_state(self, name: str, value: Any, flag: Literal["vital", "optional", "optimizer"]) -> None:
+    def set_state(self, name: str, value: Any, flag: Literal["vital", "optional", "optimizer"],) -> None:
         """
         Set state value with specified flag.
 
@@ -168,7 +168,7 @@ class StateManagementSubsystem:
             "optimizer_states": self.optimizer.state_dict()
         }
 
-    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any],) -> None:
         """
         Restore state from state dictionary.
 
