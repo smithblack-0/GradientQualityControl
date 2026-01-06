@@ -8,7 +8,7 @@ import torch
 from typing import Optional
 
 from .state_management import StateManagementSubsystem
-from ..optim_utils.optimizer_utils import compute_grad_norm_from_optimizer
+from ..optimizer_utils import compute_grad_norm_from_optimizer
 
 
 class GradientAccumulationStepSubsystem:
