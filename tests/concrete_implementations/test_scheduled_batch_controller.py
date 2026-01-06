@@ -13,14 +13,22 @@ Test organization:
 - Schedule target exposure and binding
 - Factory function behavior
 - Statistics reporting
-- Distributed mode behaviors (if applicable)
+- Distributed mode behaviors
+- Parameter group aggregation
 """
 import pytest
 import sys
+import os
+import math
+import json
+import tempfile
+import random
+from pathlib import Path
 import torch
 import torch.nn as nn
+import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch_schedule_anything as tsa
-import math
 
 from src.gradient_quality_control.scheduled_batch_controller import (
     OptimizerWrapperSBC,
@@ -45,6 +53,58 @@ def apply_gradients(optimizer_wrapper):
     for group in optimizer_wrapper.param_groups:
         for param in group['params']:
             param.grad = torch.ones_like(param)
+
+
+def sbc_distributed_worker(rank, world_size, num_steps, physical_batch_size, logical_batch_size, distributed_mode, output_dir, master_addr, master_port):
+    """
+    Infrastructure worker for SBC distributed testing.
+
+    Executes num_steps iterations, applying dummy gradients each time.
+    Logs vital_statistics + stepped after each step.
+    """
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = master_port
+    os.environ['RANK'] = str(rank)
+    os.environ['WORLD_SIZE'] = str(world_size)
+
+    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
+
+    try:
+        # Create wrapper
+        params = [torch.nn.Parameter(torch.randn(5, 5)) for _ in range(3)]
+        optimizer = torch.optim.AdamW(params, lr=0.001, weight_decay=0.01)
+        optimizer_wrapper = OptimizerWrapperSBC(
+            optimizer,
+            physical_batch_size=physical_batch_size,
+            distributed_mode=distributed_mode
+        )
+
+        # Bind schedule
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=logical_batch_size,
+            schedule_target='logical_batch_size'
+        )
+
+        # Execute steps and log telemetry
+        log = []
+        for step_num in range(num_steps):
+            for param in params:
+                param.grad = torch.ones_like(param)
+            result = optimizer_wrapper.step()
+
+            stats = optimizer_wrapper.vital_statistics()
+            stats['stepped'] = result
+            stats['step_number'] = step_num
+            log.append(stats)
+
+        # Save log
+        output_file = Path(output_dir) / f'rank_{rank}.json'
+        with open(output_file, 'w') as f:
+            json.dump({'rank': rank, 'log': log}, f)
+
+    finally:
+        dist.destroy_process_group()
 
 
 # =============================================================================
@@ -101,6 +161,7 @@ class TestConstructor:
 
         assert optimizer_wrapper is not None
         assert optimizer_wrapper.distributed_mode == "sharded"
+        assert optimizer_wrapper.max_draws == 16
 
     def test_constructor_validates_optimizer_type(self):
         """Constructor raises TypeError for non-optimizer."""
@@ -116,6 +177,14 @@ class TestConstructor:
                 optimizer,
                 physical_batch_size=32,
                 distributed_mode="invalid"
+            )
+    def test_constructor_complains_when_not_given_physical_batch_size(self):
+        """Constructor raises TypeError for no physical batch size."""
+        optimizer = create_simple_optimizer()
+
+        with pytest.raises(TypeError):
+            OptimizerWrapperSBC(
+                optimizer,
             )
 
 
@@ -235,30 +304,55 @@ class TestStepAlgorithm:
         assert optimizer_wrapper.num_steps == 1
         assert optimizer_wrapper.num_draws == 0  # Reset after step
 
-    def test_rounds_to_nearest_multiple(self):
-        """Rounds logical_batch_size to nearest multiple of physical_batch_size."""
+    def test_meets_threshold_with_exact_multiple(self):
+        """Steps when num_draws * physical_batch_size >= logical_batch_size (exact)."""
         optimizer = create_simple_optimizer()
         optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
 
-        # Set logical_batch_size to 50 (rounds to 2*32=64 or 1*32=32, likely 2)
+        # Set logical_batch_size to 96 (exactly 3*32)
         scheduler = tsa.constant_schedule(
             optimizer_wrapper,
-            value=50.0,
+            value=96.0,
             schedule_target='logical_batch_size'
         )
         sync = tsa.SynchronousSchedule([scheduler])
 
-        # Based on rounding, determine expected behavior
+        # Need exactly 3 draws (3*32 = 96 >= 96)
         apply_gradients(optimizer_wrapper)
         result1 = optimizer_wrapper.step()
+        assert result1 is False
 
-        # Should either step immediately (rounds to 32) or after 2 draws (rounds to 64)
-        # Contract says "rounded to nearest multiple" - 50 is closer to 32 than 64
-        # So likely steps immediately
-        if not result1:
+        apply_gradients(optimizer_wrapper)
+        result2 = optimizer_wrapper.step()
+        assert result2 is False
+
+        apply_gradients(optimizer_wrapper)
+        result3 = optimizer_wrapper.step()
+        assert result3 is True
+
+    def test_meets_threshold_with_overshoot(self):
+        """Steps when num_draws * physical_batch_size >= logical_batch_size (overshoot)."""
+        optimizer = create_simple_optimizer()
+        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
+
+        # Set logical_batch_size to 100 (need 4 draws: 3*32=96 < 100, 4*32=128 >= 100)
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=100.0,
+            schedule_target='logical_batch_size'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # First 3 draws should not step
+        for _ in range(3):
             apply_gradients(optimizer_wrapper)
-            result2 = optimizer_wrapper.step()
-            assert result2 is True
+            result = optimizer_wrapper.step()
+            assert result is False
+
+        # Fourth draw should step (4*32=128 >= 100)
+        apply_gradients(optimizer_wrapper)
+        result = optimizer_wrapper.step()
+        assert result is True
 
     def test_responds_to_schedule_changes(self):
         """Wrapper responds when schedule changes logical_batch_size."""
@@ -298,6 +392,48 @@ class TestStepAlgorithm:
 
 
 # =============================================================================
+# Parameter Group Aggregation Test Suite - tests MAX aggregation across multiple param groups
+# =============================================================================
+
+
+class TestParameterGroupAggregation:
+    """Test that MAX logical_batch_size is used across parameter groups."""
+
+    def test_uses_max_batch_size_across_groups(self):
+        """Uses MAX logical_batch_size when multiple param groups have different values."""
+        # Create optimizer with multiple parameter groups
+        params1 = [torch.nn.Parameter(torch.randn(5, 5))]
+        params2 = [torch.nn.Parameter(torch.randn(5, 5))]
+        optimizer = torch.optim.AdamW([
+            {'params': params1, 'lr': 0.001},
+            {'params': params2, 'lr': 0.001}
+        ])
+
+        wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
+
+        # Set different logical_batch_size for each group
+        # Group 0: logical_batch_size=64
+        # Group 1: logical_batch_size=128
+        # MAX = 128 should be used
+        optimizer.param_groups[0]['logical_batch_size'] = 64.0
+        optimizer.param_groups[1]['logical_batch_size'] = 128.0
+
+        # With physical_batch_size=32, MAX=128:
+        # Need 4 draws: 4*32=128 >= 128
+        for i in range(3):
+            for param in params1 + params2:
+                param.grad = torch.ones_like(param)
+            result = wrapper.step()
+            assert result is False
+
+        # Fourth draw should step
+        for param in params1 + params2:
+            param.grad = torch.ones_like(param)
+        result = wrapper.step()
+        assert result is True
+
+
+# =============================================================================
 # Statistics Reporting Test Suite - tests statistics() and vital_statistics() methods
 # =============================================================================
 
@@ -305,53 +441,33 @@ class TestStepAlgorithm:
 class TestStatisticsReporting:
     """Test statistics reporting includes SBC-specific info."""
 
-    def test_statistics_returns_dict(self):
-        """statistics() returns a dictionary."""
+
+    def test_statistics_includes_physical_batch_size(self):
+        """statistics() includes physical_batch_size (optional)."""
+        optimizer = create_simple_optimizer()
+        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32, )
+
+        stats = optimizer_wrapper.statistics("verbose")
+
+        assert 'physical_batch_size' in stats
+        assert stats['physical_batch_size'] == 32
+
+    def test_vital_statistics_includes_logical_batch_size(self):
+        """vital_statistics() includes logical_batch_size (vital)."""
         optimizer = create_simple_optimizer()
         optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
 
-        stats = optimizer_wrapper.statistics()
-
-        assert isinstance(stats, dict)
-
-    def test_vital_statistics_returns_dict(self):
-        """vital_statistics() returns a dictionary."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
-
-        vital_stats = optimizer_wrapper.vital_statistics()
-
-        assert isinstance(vital_stats, dict)
-
-    def test_statistics_includes_base_counters(self):
-        """statistics() includes base wrapper counters."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
-
-        stats = optimizer_wrapper.statistics()
-
-        # From base wrapper
-        assert 'num_batches' in stats
-        assert 'num_steps' in stats
-        assert 'num_draws' in stats
-
-    def test_statistics_includes_sbc_specific_info(self):
-        """statistics() includes SBC-specific information."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
-
-        # Set logical_batch_size
+        # Bind schedule to logical_batch_size
         scheduler = tsa.constant_schedule(
             optimizer_wrapper,
             value=64.0,
             schedule_target='logical_batch_size'
         )
 
-        stats = optimizer_wrapper.statistics()
+        vital_stats = optimizer_wrapper.vital_statistics()
 
-        # SBC should report physical_batch_size and logical_batch_size
-        assert 'physical_batch_size' in stats or 'logical_batch_size' in stats
-
+        assert 'logical_batch_size' in vital_stats
+        assert vital_stats['logical_batch_size'] == 64.0
 
 # =============================================================================
 # Factory Test Suite: make_sbc_with_polynomial_schedule - tests factory creates correct wrapper and schedules
@@ -598,6 +714,235 @@ class TestMakeSBCWithPolynomialScheduleConventionalLR:
 
         # Should remain approximately the same
         assert math.isclose(wd_start, wd_end, rel_tol=0.01)
+
+
+# =============================================================================
+# Distributed Mode Test Suite - tests behavioral side effects in distributed mode
+# =============================================================================
+
+
+class TestDistributedMode:
+    """Test distributed mode behavioral side effects."""
+
+    @pytest.mark.distributed
+    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    def test_replicated_mode_steps_sooner_than_non_distributed(self):
+        """Replicated mode steps sooner due to effective batch size multiplication."""
+        world_size = 2
+
+        # Test configuration - visible in test
+        # Physical batch size: 32 per device
+        # Logical batch size: 128
+        # Replicated mode: effective physical = 32 * 2 = 64
+        # Should step at draw 2: 2 * 64 = 128 >= 128
+        num_steps = 3
+        physical_batch_size = 32
+        logical_batch_size = 128.0
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Spawn workers
+            mp.spawn(
+                sbc_distributed_worker,
+                args=(world_size, num_steps, physical_batch_size, logical_batch_size, "replicated", tmpdir, 'localhost', '29506'),
+                nprocs=world_size,
+                join=True
+            )
+
+            # Collect logs from all ranks
+            logs = []
+            for rank in range(world_size):
+                output_file = Path(tmpdir) / f'rank_{rank}.json'
+                with open(output_file, 'r') as f:
+                    data = json.load(f)
+                    logs.append(data['log'])
+
+            # All ranks must agree
+            assert all(log == logs[0] for log in logs), "All ranks must agree"
+
+            # Verify stepping pattern: accumulates then steps at draw 2
+            assert logs[0][0]['stepped'] is False  # Step 0: 1*64 < 128
+            assert logs[0][1]['stepped'] is True   # Step 1: 2*64 >= 128
+
+    @pytest.mark.distributed
+    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    def test_sharded_mode_behaves_like_non_distributed(self):
+        """Sharded mode has same stepping behavior as non-distributed."""
+        world_size = 2
+
+        # Test configuration - visible in test
+        # Physical batch size: 32 per device
+        # Logical batch size: 64
+        # Sharded mode: effective physical = 32 (no multiplication)
+        # Should step at draw 2: 2 * 32 = 64 >= 64
+        num_steps = 3
+        physical_batch_size = 32
+        logical_batch_size = 64.0
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Spawn workers
+            mp.spawn(
+                sbc_distributed_worker,
+                args=(world_size, num_steps, physical_batch_size, logical_batch_size, "sharded", tmpdir, 'localhost', '29507'),
+                nprocs=world_size,
+                join=True
+            )
+
+            # Collect logs from all ranks
+            logs = []
+            for rank in range(world_size):
+                output_file = Path(tmpdir) / f'rank_{rank}.json'
+                with open(output_file, 'r') as f:
+                    data = json.load(f)
+                    logs.append(data['log'])
+
+            # All ranks must agree
+            assert all(log == logs[0] for log in logs), "All ranks must agree"
+
+            # Verify stepping pattern: same as non-distributed
+            # Step 0: 1*32 < 64, no step
+            # Step 1: 2*32 >= 64, step
+            assert logs[0][0]['stepped'] is False
+            assert logs[0][1]['stepped'] is True
+
+            # Compare with non-distributed to verify identical behavior
+            params = [torch.nn.Parameter(torch.randn(5, 5)) for _ in range(3)]
+            optimizer = torch.optim.AdamW(params, lr=0.001, weight_decay=0.01)
+            optimizer_wrapper_normal = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
+
+            scheduler_normal = tsa.constant_schedule(
+                optimizer_wrapper_normal,
+                value=64.0,
+                schedule_target='logical_batch_size'
+            )
+
+            for param in params:
+                param.grad = torch.ones_like(param)
+            result_normal_1 = optimizer_wrapper_normal.step()
+
+            for param in params:
+                param.grad = torch.ones_like(param)
+            result_normal_2 = optimizer_wrapper_normal.step()
+
+            # Sharded should match non-distributed exactly
+            assert result_normal_1 is False
+            assert result_normal_2 is True
+
+
+# =============================================================================
+# Integration Test Suite - end-to-end training with factory
+# =============================================================================
+
+
+class TestIntegration:
+    """End-to-end integration tests with real training."""
+
+    def test_complete_training_cycle_with_factory(self):
+        """Complete training cycle using factory-created wrapper and schedules."""
+        # Create simple model and data
+        model = nn.Linear(10, 2)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+
+        # Use factory to create wrapper and schedules
+        optimizer_wrapper, scheduler = make_sbc_with_polynomial_schedule(
+            optimizer=optimizer,
+            physical_batch_size=4,
+            initial_batch_size=4,
+            final_batch_size=16,
+            num_training_steps=100,
+            num_warmup_steps=10,
+            polynomial_power=2.0
+        )
+
+        # Training loop
+        for step in range(100):
+            # Generate dummy batch
+            x = torch.randn(4, 10)
+            y = torch.randint(0, 2, (4,))
+
+            # Forward pass
+            output = model(x)
+            loss = torch.nn.functional.cross_entropy(output, y)
+
+            # Backward pass
+            loss.backward()
+
+            # Step wrapper (may or may not step optimizer)
+            stepped = optimizer_wrapper.step()
+
+            # Step scheduler
+            scheduler.step()
+
+        # Verify training occurred
+        assert optimizer_wrapper.num_steps > 0
+        assert optimizer_wrapper.num_batches == 100
+
+        # Verify schedules evolved
+        final_batch_size = scheduler.get_last_schedule('logical_batch_size')[0]
+        assert final_batch_size > 4  # Should have increased
+
+    def test_state_dict_save_load_resume_training(self):
+        """Save state mid-training, load, and resume with identical behavior."""
+        model = nn.Linear(10, 2)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+
+        optimizer_wrapper, scheduler = make_sbc_with_polynomial_schedule(
+            optimizer=optimizer,
+            physical_batch_size=4,
+            initial_batch_size=4,
+            final_batch_size=16,
+            num_training_steps=100,
+            num_warmup_steps=10
+        )
+
+        # Train for 50 steps
+        for step in range(50):
+            x = torch.randn(4, 10)
+            y = torch.randint(0, 2, (4,))
+            output = model(x)
+            loss = torch.nn.functional.cross_entropy(output, y)
+            loss.backward()
+            optimizer_wrapper.step()
+            scheduler.step()
+
+        # Save state
+        wrapper_state = optimizer_wrapper.state_dict()
+        scheduler_state = scheduler.state_dict()
+        model_state = model.state_dict()
+
+        steps_at_save = optimizer_wrapper.num_steps
+
+        # Create new wrapper and resume
+        model_new = nn.Linear(10, 2)
+        model_new.load_state_dict(model_state)
+        optimizer_new = torch.optim.AdamW(model_new.parameters(), lr=0.001, weight_decay=0.01)
+
+        optimizer_wrapper_new, scheduler_new = make_sbc_with_polynomial_schedule(
+            optimizer=optimizer_new,
+            physical_batch_size=4,
+            initial_batch_size=4,
+            final_batch_size=16,
+            num_training_steps=100,
+            num_warmup_steps=10
+        )
+
+        optimizer_wrapper_new.load_state_dict(wrapper_state)
+        scheduler_new.load_state_dict(scheduler_state)
+
+        # Verify state restored
+        assert optimizer_wrapper_new.num_steps == steps_at_save
+
+        # Continue training
+        for step in range(50):
+            x = torch.randn(4, 10)
+            y = torch.randint(0, 2, (4,))
+            output = model_new(x)
+            loss = torch.nn.functional.cross_entropy(output, y)
+            loss.backward()
+            optimizer_wrapper_new.step()
+            scheduler_new.step()
+
+        # Verify training continued
+        assert optimizer_wrapper_new.num_steps > steps_at_save
 
 
 if __name__ == "__main__":
