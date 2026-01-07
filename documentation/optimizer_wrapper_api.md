@@ -39,7 +39,7 @@ where
 
 The following primary ScheduleAnything target is added
 
-- **`logical_batch_size`** - Target total batch size injected by wrapper. Wrapper accumulates until reaching this size (rounded to nearest multiple of physical_batch_size).
+- **`logical_batch_size`** - Target total batch size injected by wrapper. Wrapper accumulates until reaching this size (rounded to nearest multiple of physical_batch_size). When multiple parameter groups exist, the MAX logical_batch_size across groups is used.
 
 In addition the following two are almost always present on Adam optimizer derivatives
 
@@ -103,7 +103,7 @@ where
 
 The following primary ScheduleAnything target is added
 
-- **`gradient_norm_threshold`** - Target gradient norm threshold injected by wrapper. Wrapper accumulates until gradient norm falls at or below this threshold.
+- **`gradient_norm_threshold`** - Target gradient norm threshold injected by wrapper. Wrapper accumulates until gradient norm falls at or below this threshold. When multiple parameter groups exist, the MIN threshold across groups is used.
 
 In addition the following two are almost always present on Adam optimizer derivatives
 
@@ -115,17 +115,22 @@ In addition the following two are almost always present on Adam optimizer deriva
 When it is detected that a distributed mode is being used, the distributed mode flag must be set to either replicated or sharded. These have the following behaviors
 
 - **`replicated`**: No change in behavior. Gradient norms are replicated before the system gets a chance to check, and we are automatically taking the norms of synchronized gradients, so no change is needed.
-- **`sharded`**: The norm on each device is presumed to be part of the whole norm, and needs to be added up. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 
+- **`sharded`**: The norm on each device is presumed to be part of the whole norm and needs to be averaged. We use the decomposition sqrt(sum(grad_norm^2)/world_size) to compute the mean norm from each device to get the same norm on all devices. Note that the merger formula presumes sharding into a roughly equal number of parameters per device. Violators will find the device with the smaller groups has an anomalously large effect on training.
 
-Cases involving both replication and sharding are not currently supported. Submit a pull request if interested. Under the hood we use torch distributed utilities. 
+Cases involving both replication and sharding are not currently supported. Submit a pull request if interested. Under the hood we use torch distributed utilities.
+
+ 
 
 ### Algorithm
 
-On each step call, the system computes the current gradient norm (divided by num_draws to get the mean) and checks whether
+Presume the existence of a function `compute_mean_l2_gradient_norm(optimizer) -> float` that computes the mean L2 norm of gradients across all parameters.
 
-```mean_gradient_norm <= gradient_norm_threshold```
+On each `step()` call:
 
-When this condition is satisfied for all parameter groups, the step decision is taken. As accumulation continues, the mean gradient norm typically decreases, making it progressively more likely to meet the threshold. The system will force a step when `num_draws >= max_batch_draws` regardless of gradient norm.
+1. Compute `mean_norm = compute_mean_l2_gradient_norm(optimizer)`
+2. Step if `(mean_norm <= gradient_norm_threshold)` OR `(num_draws >= max_batch_draws)`
+
+As accumulation continues, the mean gradient norm typically decreases, making it progressively more likely to meet the threshold.
 
 ### Step
 
@@ -141,7 +146,7 @@ def step(self) -> bool
 
 A *control* wrapper which always steps, but also rescales the gradients to a constant scale during all steps before doing so. It exposes "weight_decay", "gradient_norm_target", and "lr" for scheduling. When used, it looks up the current gradient norm target, figures out the gradient norm, then rescales all gradients to that norm. It then immediately steps and zeros the gradients in the optimizer.
 
-Usage is estimated to be best as learning rate to constant warmup, weight decay to warmup then cosine annealing, and cosine annealing of norm. This is because it replaces learning rate scheduling by directly controlling the length of the gradient instead.
+Usage is estimated to be best as learning rate to constant warmup, weight decay to warmup then  Ncosine annealing, and cosine annealing of norm. This is because it replaces learning rate scheduling by directly controlling the length of the gradient instead.
 
 Used to isolate how much gain comes from more consistent gradient lengths, which has synergetic effects with Adam optimizers and optimizers with second-moment curvature estimation.
 
@@ -153,47 +158,47 @@ The constructor wraps an optimizer, and asks for exactly as much additional info
 def __init__(
     self,
     optimizer: torch.optim.Optimizer,
-    max_batch_draws: int = 64,
-    distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
-    mode: Literal["global", "independent"] = "global"
-)
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+):
 ```
 
 where
 
 **Parameters:**
 - `optimizer` - Configured PyTorch optimizer to wrap
-- `max_batch_draws` - Maximum accumulation before forcing step (default: 64)
 - `distributed_mode` - One of "replicated", "sharded". Replicated is used for data parallel processes like DDP, while sharded for model parallel processes. These influence how to merge metrics.
-- `mode` - Scaling mode: "global" computes norm across all parameters and scales uniformly, "independent" scales each parameter to target norm separately (default: "global")
 
 ### Schedule Targets
 
 The following primary ScheduleAnything target is added
 
-- **`target_gradient_norm`** - Target gradient norm injected by wrapper. Wrapper rescales all gradients to match this norm before stepping.
+- **`target_gradient_norm`** – Target gradient norm injected by wrapper. All gradients are rescaled to match this norm before stepping.
 
 In addition the following two are almost always present on Adam optimizer derivatives
 
-- **`lr`** - Learning rate from wrapped optimizer
-- **`weight_decay`** - Weight decay from wrapped optimizer (for Adam-family optimizers)
+- **`lr`** – Learning rate from wrapped optimizer
+- **`weight_decay`** – Weight decay from wrapped optimizer (for Adam-family optimizers)
 
 ### Distributed Support
 
 When it is detected that a distributed mode is being used, the distributed mode flag must be set to either replicated or sharded. These have the following behaviors
 
-- **`replicated`**: No change in behavior. Gradient norms are replicated during backwards pass automatically so no change is needed.
-- **`sharded`**: The norm on each device is presumed to be part of the whole norm, and needs to be added up. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 
+- **`replicated`**: No change in behavior. Gradients are synchronized before norm computation, so the measured norm is already global.
+- **`sharded`**: The gradient norm on each device is presumed to be part of the whole norm and needs to be averaged. We use the decomposition sqrt(sum(grad_norm^2)/world_size) to compute the mean norm from each device to get the same norm on all devices. The merger formula presumes sharding into a roughly equal number of parameters per device. Violators will find the device with the smaller groups has an anomalously large effect on training.
 
-Cases involving both replication and sharding are not currently supported. Submit a pull request if interested.
 
 ### Algorithm
 
-On each step call, the system computes the current gradient norm globally across all parameters, then rescales all gradients by the factor
+Presume the existence of a function `compute_mean_l2_gradient_norm(optimizer) -> float` that returns the library-standard aggregate L2 gradient magnitude of all gradients currently held by the optimizer. In the special case of zero, we do not move; we cannot tell direction.
 
-```rescale_factor = target_gradient_norm / current_gradient_norm```
+On each `step()` call:
 
-This ensures the gradient direction is preserved while the magnitude is set to exactly `target_gradient_norm`. The optimizer is then stepped with the rescaled gradients. This wrapper always steps on every call, never accumulating.
+1. Compute `current_norm = compute_mean_l2_gradient_norm(optimizer)`
+2. Rescale all gradients so that their aggregate norm equals `target_gradient_norm`. If zero, we just do not rescale.
+3. Invoke the wrapped optimizer’s step and reset gradients
+
+This wrapper always steps and never accumulates.
+
 
 ### Step
 
@@ -237,8 +242,8 @@ where
 
 The following primary ScheduleAnything targets are added
 
-- **`confidence_level`** - Statistical confidence level for t-test (e.g., 0.95 for 95% confidence) injected by wrapper
-- **`percent_error_threshold`** - Maximum acceptable confidence interval width injected by wrapper
+- **`confidence_level`** - Statistical confidence level for t-test (e.g., 0.95 for 95% confidence) injected by wrapper. When multiple parameter groups exist, the MEAN confidence_level across groups is used.
+- **`percent_error_threshold`** - Maximum acceptable confidence interval width injected by wrapper. When multiple parameter groups exist, the MEAN percent_error_threshold across groups is used.
 
 In addition the following two are almost always present on Adam optimizer derivatives
 
@@ -254,7 +259,22 @@ The primary issue is whether or not samples are independent.
 
 ### Algorithm
 
-On each step call, the user provides a metric value (typically loss). The system accumulates these metric samples and performs a two-tailed t-test to compute the confidence interval at the specified `confidence_level`. The step decision is taken when the confidence interval meets the `percent_error_threshold` criterion, indicating the metric estimate has sufficiently low variance. The system will force a step when `num_draws >= max_batch_draws` regardless of confidence interval width.
+Presume the existence of a function `compute_t_confidence_interval(samples, confidence_level) -> (CI_low, CI_high)` that computes a two-tailed Student's t-distribution confidence interval using degrees of freedom `df = len(samples) - 1`.
+
+The system maintains:
+- `current_stage_metrics = [m1, m2, ..., mn]` - metrics accumulated since last step
+- `running_average` - scalar initialized to first metric value, updated on each step
+
+On each `step(metric)` call:
+
+1. Append `metric` to `current_stage_metrics`
+2. Compute `test_samples = [running_average, m1, m2... mn]`
+3. Compute `(CI_low, CI_high) = compute_t_confidence_interval(test_samples, confidence_level)`
+4. Compute `mean = mean(test_samples)`
+5. Step if `(CI_low >= mean * (1 - percent_error_threshold) AND CI_high <= mean * (1 + percent_error_threshold))` OR `num_draws >= max_batch_draws`
+6. If stepped: update `running_average` (implementation detail), clear `current_stage_metrics`
+
+Special cases: If `mean == 0`, do not step; we just started. Running average provides implicit sample, no minimum count required.
 
 ### Step
 
@@ -312,22 +332,33 @@ In addition the following two are almost always present on Adam optimizer deriva
 
 The primary issue is whether or not samples are independent. 
 
-- **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list on all devices. 
-- **`sharded`**: This is still just one batch. We use the decomposition sqrt(sum(grad_norm^2)) to equivalently add up the norms from each device to get the same norm on all devices. 
+- **`replicated`**: We presume the independence of samples. All metric draws from all devices are appended to the list on all devices.
+- **`sharded`**: This is still just one batch. We use the decomposition sqrt(sum(grad_norm^2)/world_size) to compute the mean norm from each device to get the same norm on all devices. Note that the merger formula presumes sharding into a roughly equal number of parameters per device. Violators will find the device with the smaller groups has an anomalously large effect on training.
+
 
 ### Algorithm
 
-On each step call, the system tracks per-microbatch gradient norms and estimates the gradient noise scale using:
+This controller implements the approximate (effective) gradient noise scale estimator described by McCandlish et al., using per-microbatch gradient norm statistics.
 
-```
-estimated_GNS = Var(||g_i||) / E[||g_i||²]
-```
+Presume the existence of the following common operations:
 
-where `||g_i||` is the gradient norm for each accumulated microbatch. The step decision is taken when
+- `get_l2_grad_norm_from_last_microbatch(optimizer) -> float`, returning the L2 norm or norms of the gradient produced by the most recent microbatch or batches.
+- `insert_history(new_values, history) -> None`, appending one or more scalar values into `history`
+- `clear_history(history) -> None`
+- `mean(values) -> float`
+- `variance(values) -> float`
 
-```estimated_GNS <= num_draws * noise_tolerance```
+The system maintains `grad_norm_history = [g1, g2, ..., gk]`, the accumulated gradient L2 norms since the last step.
 
-This criterion, inspired by McCandlish et al.'s work, balances noise reduction benefits against accumulation costs. The system will force a step when `num_draws >= max_batch_draws` regardless of the GNS estimate.
+On each `step()` call:
+
+1. Retrieve `new_grad_norm = get_l2_grad_norm_from_last_microbatch(optimizer)`
+2. Update history via `insert_history(new_grad_norm, grad_norm_history)`
+3. Compute `mean_sq = mean(grad_norm_history^2)` where `grad_norm_history^2` denotes elementwise squaring of the history values
+4. Compute `var = variance(grad_norm_history)`
+5. Estimate noise scale as `estimated_GNS = var / mean_sq`
+6. Step if `(estimated_GNS <= num_draws * noise_tolerance)` OR `(num_draws >= max_batch_draws)`
+   - If stepped, clear history via `clear_history(grad_norm_history)`
 
 ### Step
 

@@ -6,7 +6,8 @@
       "Bash(wsl --list:*)",
       "Bash(wsl:*)",
       "Bash(wsl.exe -d Ubuntu-24.04 python3:*)",
-      "Bash(wsl.exe -d Ubuntu-24.04 -- bash -c \"python3 --version\")"
+      "Bash(wsl.exe -d Ubuntu-24.04 -- bash -c \"python3 --version\")",
+      "Bash(wsl.exe:*)"
     ]
   }
 }
