@@ -186,7 +186,6 @@ def make_gnr_with_cosine_annealing_schedule(
     final_norm: float,
     num_training_steps: int,
     num_warmup_steps: int,
-    max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperGNR, LRSchedule]:
 ```
@@ -198,7 +197,6 @@ def make_gnr_with_cosine_annealing_schedule(
 - `final_norm` - Ending target gradient norm
 - `num_training_steps` - Total training steps
 - `num_warmup_steps` - Steps for warmup phase
-- `max_batch_draws` - Maximum accumulation (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
 ### Schedule Configuration
@@ -224,7 +222,6 @@ def make_gnr_with_cosine_annealing_schedule_conventional_lr(
     final_norm: float,
     num_training_steps: int,
     num_warmup_steps: int,
-    max_batch_draws: int = 64,
     distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperGNR, LRSchedule]:
 ```
@@ -236,7 +233,6 @@ def make_gnr_with_cosine_annealing_schedule_conventional_lr(
 - `final_norm` - Ending target gradient norm
 - `num_training_steps` - Total training steps
 - `num_warmup_steps` - Steps for warmup phase
-- `max_batch_draws` - Maximum accumulation (default: 64)
 - `distributed_mode` - A specification which must not be none when distributed, but is optional otherwise. Tells us whether we are operating in a distributed data or sharded model distributed mode.
 
 ### Schedule Configuration

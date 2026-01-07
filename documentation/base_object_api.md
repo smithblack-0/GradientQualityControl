@@ -170,11 +170,13 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         return torch.nn.utils.get_total_norm(grads)
     
     def merge_sharded_grad_norms(self, grad_norm: float)->float:
-        """L2 Sum is required for grad norms"""
-        # implements sqrt(sum(square(input))) across devices
-        grad_norm_tensor = torch.tensor([grad_norm], device=self.device)  
+        """L2 mean is required for grad norms"""
+        # implements sqrt(sum(square(input))/num_devices) across devices
+        num_devices = dist.get_world_size()
+        grad_norm_tensor = torch.tensor([grad_norm], device=self.device)
         grad_norm_tensor = grad_norm_tensor**2
         dist.all_reduce(grad_norm_tensor, op=dist.ReduceOp.SUM)
+        grad_norm_tensor = grad_norm_tensor/num_devices
         grad_norm_tensor = torch.sqrt(grad_norm_tensor)
         return grad_norm_tensor.item()
     
@@ -207,8 +209,6 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
 ```
 
 
-
-
 ### statistics
 
 The statistics method provides complete visibility into the wrapper's internal state and the underlying optimizer's configuration. Call this when you need to log detailed training metrics, debug unexpected behavior, analyze algorithm performance, or export comprehensive training data. 
@@ -217,7 +217,7 @@ The method pulls from vital, optional, and optimizer information sources, and a 
 
 Some state cases, and optimizers, present a unique challenge; they can have multiple param groups with different values. If all values are the same information is displayed like normal. If they are not, the aggregated value gets a "*" next to it, like "lr*" and the `aggregate_behavior` flag governs how this is reduced suffix. Only optimizer fields that are of float or scalar-tensor type are isolated and displayed in this manner. This may also occur when storing, for example, a list of states as subclass state.
 
-This method is read-only and deterministic - calling it never modifies state, and the same state always produces the same output. You can call it as many times as needed, even before the first step.
+This method is read-only and deterministic - calling it never modifies state, and the same state always produces the same output. You can call it asmany times as needed, even before the first step.
 
 
 ```python

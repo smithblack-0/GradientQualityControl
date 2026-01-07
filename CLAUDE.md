@@ -2,12 +2,12 @@
 
 A PyTorch library for gradient quality control using Sequential Binary Decision Controllers (SBDC).
 
-## Project Structurees
+## Project Structures
 
 ```
 src/gradient_quality_control/    # Source code
 tests/                           # Tests
-documentation/                   # API documentation
+documentation/                   # API documentation (Read userguide)
 dev.md                           # Development methodology (READ THIS)
 ```
 

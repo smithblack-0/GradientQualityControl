@@ -687,15 +687,15 @@ class TestDistributedMode:
     @pytest.mark.distributed
     @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
     def test_sharded_mode_combines_norms_across_devices(self):
-        """Sharded mode combines gradient norms using sqrt(sum(norm^2))."""
+        """Sharded mode combines gradient norms using sqrt(sum(norm^2)/world_size)."""
         world_size = 2
 
         # Test configuration - visible in test
         # Symmetric gradients: norm=3.0 on each of 2 ranks
-        # Combined norm = sqrt(3^2 + 3^2) = sqrt(18) ≈ 4.24
-        # After 1 draw: mean_norm = 4.24 / 1 ≈ 4.24
+        # Combined norm = sqrt((3^2 + 3^2)/2) = sqrt(18/2) = sqrt(9) = 3.0
+        # After 1 draw: mean_norm = 3.0 / 1 = 3.0
         # Threshold = 5.0
-        # 4.24 <= 5.0, should step
+        # 3.0 <= 5.0, should step
         gradients = [3.0]
         threshold = 5.0
 

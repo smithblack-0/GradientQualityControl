@@ -1,5 +1,116 @@
 # Changelog
 
+## 0.10.10
+
+**GNS Test Implementation**
+
+- Implemented comprehensive test suite for OptimizerWrapperGNS (Gradient Noise Scale)
+- 26 tests across 8 test suites following DDD black-box methodology
+- Tests verify 6-step algorithm from contract using formulas to predict behavior
+- Includes distributed tests (replicated history sharing, sharded norm merging)
+- Includes factory tests for both `make_gns_with_cosine_annealing_schedule` and `make_gns_default`
+- Creative robust test for MIN aggregation using extreme tolerance values (0.0 and 100000.0)
+- Tests implemented from spec in `documentation/optimizer_wrapper_api.md` and `documentation/api_guide.md`
+- Needs auditing
+
+## 0.10.9
+
+**GNR Test Implementation**
+
+- Implemented comprehensive test suite for OptimizerWrapperGNR (Gradient Norm Rescaler)
+- 39 tests across 10 test suites following DDD black-box methodology
+- Tests verify gradient rescaling to target norm using documented formula
+- Includes distributed tests for both replicated and sharded modes with multiple scenarios
+- Includes factory tests for both `make_gnr_with_cosine_annealing_schedule` and `make_gnr_with_cosine_annealing_schedule_conventional_lr`
+- Used SpyOptimizer pattern to capture gradient norms before stepping (black-box via injected dependency)
+- Tests verify MEAN aggregation across parameter groups
+- Tests implemented from spec in `documentation/optimizer_wrapper_api.md` and `documentation/api_guide.md`
+- Needs auditing
+
+## 0.10.8
+
+- MHT tests and documentation audited; rejected due to; Lacking distributed tests
+
+## 0.10.7
+
+** SBC test audit and initial MHT test implementation**
+
+- Major issues in MHT spec; algorithm not specific enough. Fixed. 
+- MHT test deployed by llm; needs audit.
+- SBC tests rejected due to: Lacking distributed tests. 
+
+## 0.10.6
+
+**Initial SBC test implementation**
+
+- Done through claude code. 
+- From spec.
+- Needs auditing.
+
+## 0.10.5
+
+**Base Class Finished**
+
+We had to switch to a WSL interpreter for testing to have unix support for cpu groups.
+
+- All tests passing
+- Distributed bug fixed.
+- Formatting done
+
+The abstract base class is done. 
+
+## 0.10.4
+
+**AbstractOptimizerWrapper Implementation**
+
+- Implemented `AbstractOptimizerWrapper`: User-facing class with automatic subsystem construction
+  - Auto-constructs StateManagementSubsystem, DistributedMetricsManagementSubsystem, GradientAccumulationStepSubsystem, and ReportingSubsystem
+  - Validates optimizer type, max_draws parameter, and distributed_mode values
+  - Detects distributed execution and requires distributed_mode specification when `torch.distributed.is_initialized()`
+- Fixed 3 test bugs in `test_orchestrator_main_system.py`:
+  - `test_constructor_finalizes_initialization`: Changed to test attribute forwarding instead of expecting RuntimeError
+  - `test_state_dict_forwards_to_state_manager`: Fixed to set state before retrieval instead of modifying dict after
+  - `test_distributed_mode_propagates_through_metrics`: Fixed parameter order for `_bind_metric()`
+- Added test `test_bind_metric_uses_default_passthrough_for_normal_merger`
+- Fixed 2 test bugs in `test_abstract_optimizer_wrapper.py`:
+  - Added `NoStepWrapper` fixture for testing max_draws enforcement (wrapper that accumulates without stepping)
+  - Fixed `test_wrapper_extends_and_schedules_custom_params`: Changed `constant_value` to `value` (correct ScheduleAnything API)
+- Added distributed test validation: `test_constructor_raises_when_distributed_initialized_without_mode`
+- Marked distributed tests with `@pytest.mark.distributed` and `@pytest.mark.skipif(sys.platform == 'win32')` (gloo backend unsupported on Windows)
+- Added pytest marker configuration to `pyproject.toml` for distributed tests
+
+## 0.10.3
+
+**Implement the reporting subsystem**
+
+- Initial implementation done
+- Issue fixed: Does not convert tensors automatically.
+- Issue fixed: Tests were not written to ignore illegal objects and exclude them from statistics
+
+## 0.10.2
+
+**Implement the gradient management subsystem**
+
+- Implement the gradient management test subsystem
+- Verify system is actually passing tests
+- Human audit.
+
+## 0.10.1
+
+**Implement metrics and gradients subsystem**
+
+- Implement the distributed metrics subsystem
+- Verified implementation appears sane.
+- -
+
+## 0.10.0
+
+**Implement state management**
+
+- Implement state management
+- Correct LLM to use schedule anything
+- Minor tweak to test_abstract_optimizer_wrapper.py to bind to ScheduleAnything schedules.
+
 ## 0.9.9
 
 **Human auditing and corrections stage**
