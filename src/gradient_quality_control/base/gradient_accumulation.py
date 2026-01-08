@@ -64,6 +64,11 @@ class GradientAccumulationStepSubsystem:
         return self._state_manager.get_state('num_draws')
 
     @property
+    def max_draws(self)->int:
+        """maximum allowed draws"""
+        return self._max_draws
+
+    @property
     def last_num_draws(self) -> Optional[int]:
         """Batch count from most recent step. None before first step."""
         return self._state_manager.get_state('last_num_draws')

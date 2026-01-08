@@ -51,6 +51,7 @@ The following fields are available, with indicated behavior, on the main class
 - **`num_batches`** (`int`) - Total batches processed since wrapper creation
 - **`num_steps`** (`int`) - Total optimizer steps taken
 - **`num_draws`** (`int`) - Batches accumulated since last step (resets to 0 after each step)
+- **`max_draws`** (`int`) - The number of draws that can be made at maximum.
 - **`last_num_draws`** (`int`) - Number of batches in most recent optimizer step. None before first step.
 - **`last_grad_norm`** (`float`) - L2 gradient norm from most recent optimizer step. None before first step.
 - **`valid_schedule_targets`** (`List[str]`) - Read-only list of all schedulable parameter names. Includes native optimizer parameters (lr, weight_decay, momentum, etc.) and wrapper-extended parameters.
@@ -534,7 +535,7 @@ The name of the metric, the function to read it with, the way to merge if replic
 def _bind_metric(self,
                  name: str,
                  metric_reader: Callable[[Any], Numeric]),
-                 replication_merger: Callable[[Numeric], Any],
+                 replicated_merger: Callable[[Numeric], Any],
                  sharded_merger: Callable[[Numeric], Any],
                  normal_merger: Callable[[Numeric], Any] = lambda x : x,
                 ):

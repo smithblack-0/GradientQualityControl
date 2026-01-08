@@ -76,6 +76,11 @@ class OrchestratorMainSystem(OptimizerMockingMixin):
         return self._accumulation.num_draws
 
     @property
+    def max_draws(self)->int:
+        """Maximum allowed draws."""
+        return self._accumulation.max_draws
+
+    @property
     def last_num_draws(self) -> Optional[int]:
         """Number of batches in most recent optimizer step. None before first step."""
         return self._accumulation.last_num_draws
