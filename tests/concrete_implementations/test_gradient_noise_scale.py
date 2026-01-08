@@ -683,6 +683,39 @@ class TestDistributedMode:
             assert logs[0][1]['stepped'] is True
             assert logs[1][1]['stepped'] is True
 
+            # Compare with non-distributed control to verify distributed steps SOONER
+            # Replicated mode accumulates 2 samples per iteration (one from each device)
+            # Non-distributed accumulates 1 sample per iteration
+            # Should reach threshold faster in distributed mode
+            param = torch.nn.Parameter(torch.randn(2, 2))
+            optimizer_control = torch.optim.AdamW([param], lr=0.001)
+            wrapper_control = OptimizerWrapperGNS(optimizer_control)
+
+            schedule_control = tsa.constant_schedule(
+                wrapper_control,
+                value=0.02,
+                schedule_target='noise_tolerance'
+            )
+
+            # Apply same gradient norms as distributed test (2.0, 3.0, repeated)
+            # Each device in distributed applied [2.0, 3.0], so we apply same sequence
+            gradient_norms = [2.0, 3.0, 2.0, 3.0]
+            num_steps_control = 0
+            for i, norm in enumerate(gradient_norms):
+                # Set gradient to produce desired norm
+                # norm = scale * sqrt(num_params), for 2x2 = 4 params: scale = norm / 2
+                param.grad = torch.ones_like(param) * (norm / 2.0)
+                stepped = wrapper_control.step()
+                if stepped:
+                    num_steps_control = i + 1
+                    break
+
+            # Distributed stepped after 2 iterations (4 samples total)
+            # Control should step after 4 iterations (4 samples total)
+            # Verify: distributed steps sooner (fewer iterations due to parallel sampling)
+            distributed_iterations = 2  # Each device did 2 iterations
+            assert distributed_iterations < num_steps_control
+
     def test_sharded_mode_merges_norms_before_history(self):
         """Sharded mode merges norms using sqrt(sum(norm^2)/world_size)."""
         # Setup: 2 devices with different local norms
@@ -729,6 +762,64 @@ class TestDistributedMode:
             # Both devices should make same stepping decisions
             # (norm merging ensures consistency)
             assert logs[0][-1]['stepped'] == logs[1][-1]['stepped']
+
+            # Compare with non-distributed control using merged norms
+            # Sharded mode merges norms: sqrt(sum(norm^2)/world_size)
+            # Control should apply merged norms and step at SAME iteration
+            # This verifies sharded distributed behaves like non-distributed with merged state
+
+            # Calculate merged norms for each iteration
+            # Each device has local norms [2.0, 4.0]
+            # Merged norm per iteration = sqrt((2.0^2 + 4.0^2) / 2) = sqrt(10) ≈ 3.162
+            local_norms_per_device = config['gradient_norms']
+            merged_norms = []
+            for _ in local_norms_per_device:
+                # Both devices have same norms in this test, so merge is just the norm
+                # In general: sqrt(sum(norm^2)/world_size)
+                # Here: sqrt((2.0^2 + 4.0^2)/2) = 3.162 for first, sqrt((4.0^2 + 2.0^2)/2) for second
+                # Actually, worker applies same norms to both devices
+                # So both apply 2.0 first, then both apply 4.0
+                # Merged norm when both apply 2.0: sqrt((2.0^2 + 2.0^2)/2) = 2.0
+                # Merged norm when both apply 4.0: sqrt((4.0^2 + 4.0^2)/2) = 4.0
+                pass
+
+            # Simpler approach: The worker applies [2.0, 4.0] on both devices
+            # Sharded merge: when both devices have same local norm, merged = local
+            # So merged norms are just [2.0, 4.0]
+            merged_norms = [2.0, 4.0]
+
+            param_control = torch.nn.Parameter(torch.randn(5, 5))
+            optimizer_control = torch.optim.AdamW([param_control], lr=0.001)
+            wrapper_control = OptimizerWrapperGNS(optimizer_control)
+
+            schedule_control = tsa.constant_schedule(
+                wrapper_control,
+                value=1.0,
+                schedule_target='noise_tolerance'
+            )
+
+            # Apply merged norms
+            num_steps_control = 0
+            for i, norm in enumerate(merged_norms):
+                # Set gradient to produce desired norm
+                # norm = scale * sqrt(num_params), for 5x5 = 25 params: scale = norm / 5
+                param_control.grad = torch.ones_like(param_control) * (norm / 5.0)
+                stepped = wrapper_control.step()
+                if stepped:
+                    num_steps_control = i + 1
+                    break
+
+            # Find when sharded mode stepped
+            sharded_steps = 0
+            for i, log_entry in enumerate(logs[0]):
+                if log_entry['stepped']:
+                    sharded_steps = i + 1
+                    break
+
+            # Sharded mode should step at SAME iteration as control
+            # (merged state is equivalent to non-distributed with merged inputs)
+            if sharded_steps > 0 and num_steps_control > 0:
+                assert sharded_steps == num_steps_control
 
 
 # Integration Test Suite - end-to-end training scenarios

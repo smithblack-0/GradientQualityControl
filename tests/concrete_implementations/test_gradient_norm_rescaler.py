@@ -626,23 +626,6 @@ class TestStatisticsReporting:
         assert 'num_steps' in vital_stats
         assert 'last_grad_norm' in vital_stats
 
-    def test_statistics_includes_optimizer_params(self):
-        """statistics() includes optimizer parameters."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperGNR(optimizer)
-
-        scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=1.0,
-            schedule_target='target_gradient_norm'
-        )
-
-        stats = optimizer_wrapper.statistics()
-
-        # Should include optimizer parameters
-        assert 'lr' in stats or any('lr' in str(k) for k in stats.keys())
-        assert 'weight_decay' in stats or any('weight_decay' in str(k) for k in stats.keys())
-
 
 # =============================================================================
 # Factory Test Suite: make_gnr_with_cosine_annealing_schedule

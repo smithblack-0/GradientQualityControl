@@ -321,7 +321,7 @@ where
 
 The following primary ScheduleAnything target is added
 
-- **`noise_tolerance`** - Noise-to-signal ratio threshold injected by wrapper
+- **`noise_tolerance`** - Noise-to-signal ratio threshold injected by wrapper. When multiple parameter groups exist, the MIN noise_tolerance across groups is used.
 
 In addition the following two are almost always present on Adam optimizer derivatives
 

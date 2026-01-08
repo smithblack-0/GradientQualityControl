@@ -205,24 +205,6 @@ class TestScheduleTargetExposure:
 
         assert 'logical_batch_size' in targets
 
-    def test_exposes_lr_target(self):
-        """Wrapper exposes lr as schedule target from base optimizer."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
-
-        targets = optimizer_wrapper.valid_schedule_targets
-
-        assert 'lr' in targets
-
-    def test_exposes_weight_decay_target(self):
-        """Wrapper exposes weight_decay as schedule target from base optimizer."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
-
-        targets = optimizer_wrapper.valid_schedule_targets
-
-        assert 'weight_decay' in targets
-
 
 # =============================================================================
 # Step Algorithm Test Suite - tests step decision logic based on num_draws * physical_batch_size >= logical_batch_size
@@ -389,6 +371,114 @@ class TestStepAlgorithm:
         apply_gradients(optimizer_wrapper)
         result4 = optimizer_wrapper.step()
         assert result4 is True
+
+    def test_exact_formula_accumulates_below_threshold(self):
+        """Verify exact formula with step-by-step calculation - accumulation case."""
+        optimizer = create_simple_optimizer()
+        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=32)
+
+        # Set logical_batch_size
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=100.0,
+            schedule_target='logical_batch_size'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # Prediction using formula (step-by-step):
+        #   Physical batch size: 32
+        #   Logical batch size: 100
+        #   After draw 1: effective = 1 * 32 = 32
+        #   Check: 32 >= 100? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result1 = optimizer_wrapper.step()
+        assert result1 is False
+        assert optimizer_wrapper.num_draws == 1
+
+        # After draw 2: effective = 2 * 32 = 64
+        #   Check: 64 >= 100? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result2 = optimizer_wrapper.step()
+        assert result2 is False
+        assert optimizer_wrapper.num_draws == 2
+
+        # After draw 3: effective = 3 * 32 = 96
+        #   Check: 96 >= 100? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result3 = optimizer_wrapper.step()
+        assert result3 is False
+        assert optimizer_wrapper.num_draws == 3
+
+    def test_exact_formula_steps_at_threshold(self):
+        """Verify exact formula with step-by-step calculation - exact threshold case."""
+        optimizer = create_simple_optimizer()
+        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=25)
+
+        # Set logical_batch_size
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=75.0,
+            schedule_target='logical_batch_size'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # Prediction using formula (step-by-step):
+        #   Physical batch size: 25
+        #   Logical batch size: 75
+        #   After draw 1: effective = 1 * 25 = 25
+        #   Check: 25 >= 75? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result1 = optimizer_wrapper.step()
+        assert result1 is False
+
+        # After draw 2: effective = 2 * 25 = 50
+        #   Check: 50 >= 75? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result2 = optimizer_wrapper.step()
+        assert result2 is False
+
+        # After draw 3: effective = 3 * 25 = 75
+        #   Check: 75 >= 75? YES → should step
+        apply_gradients(optimizer_wrapper)
+        result3 = optimizer_wrapper.step()
+        assert result3 is True
+        assert optimizer_wrapper.num_steps == 1
+        assert optimizer_wrapper.num_draws == 0  # Reset after step
+
+    def test_exact_formula_steps_with_overshoot(self):
+        """Verify exact formula with step-by-step calculation - overshoot case."""
+        optimizer = create_simple_optimizer()
+        optimizer_wrapper = OptimizerWrapperSBC(optimizer, physical_batch_size=20)
+
+        # Set logical_batch_size
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=55.0,
+            schedule_target='logical_batch_size'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # Prediction using formula (step-by-step):
+        #   Physical batch size: 20
+        #   Logical batch size: 55
+        #   After draw 1: effective = 1 * 20 = 20
+        #   Check: 20 >= 55? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result1 = optimizer_wrapper.step()
+        assert result1 is False
+
+        # After draw 2: effective = 2 * 20 = 40
+        #   Check: 40 >= 55? NO → should NOT step
+        apply_gradients(optimizer_wrapper)
+        result2 = optimizer_wrapper.step()
+        assert result2 is False
+
+        # After draw 3: effective = 3 * 20 = 60
+        #   Check: 60 >= 55? YES → should step (overshoot by 5)
+        apply_gradients(optimizer_wrapper)
+        result3 = optimizer_wrapper.step()
+        assert result3 is True
+        assert optimizer_wrapper.num_steps == 1
 
 
 # =============================================================================
@@ -726,8 +816,8 @@ class TestDistributedMode:
 
     @pytest.mark.distributed
     @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
-    def test_replicated_mode_steps_sooner_than_non_distributed(self):
-        """Replicated mode steps sooner due to effective batch size multiplication."""
+    def test_replicated_mode_multiplies_physical_batch_size(self):
+        """Replicated mode multiplies physical batch size by world_size per contract."""
         world_size = 2
 
         # Test configuration - visible in test

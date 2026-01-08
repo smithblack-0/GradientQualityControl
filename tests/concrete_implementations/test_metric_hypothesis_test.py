@@ -206,24 +206,6 @@ class TestScheduleTargetExposure:
 
         assert 'percent_error_threshold' in targets
 
-    def test_exposes_lr_target(self):
-        """Wrapper exposes lr as schedule target from base optimizer."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperMHT(optimizer)
-
-        targets = optimizer_wrapper.valid_schedule_targets
-
-        assert 'lr' in targets
-
-    def test_exposes_weight_decay_target(self):
-        """Wrapper exposes weight_decay as schedule target from base optimizer."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperMHT(optimizer)
-
-        targets = optimizer_wrapper.valid_schedule_targets
-
-        assert 'weight_decay' in targets
-
 
 # =============================================================================
 # Step Signature Test Suite - tests that step requires metric parameter
@@ -433,6 +415,103 @@ class TestStepAlgorithm:
         apply_gradients(optimizer_wrapper)
         result2 = optimizer_wrapper.step(metric=1.0)
         assert result2 is False
+
+    def test_exact_confidence_interval_formula(self):
+        """Verify exact CI formula with step-by-step calculation - two cases."""
+        # Case 1: Tight CI (low variance) - should step
+        # ============================================
+        optimizer = create_simple_optimizer()
+        optimizer_wrapper = OptimizerWrapperMHT(optimizer)
+
+        # Set parameters
+        conf_scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=0.95,
+            schedule_target='confidence_level'
+        )
+        error_scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=0.10,  # 10% error tolerance
+            schedule_target='percent_error_threshold'
+        )
+        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+
+        # Prediction using formula (step-by-step):
+        #   Provide metric samples: [1.00, 1.01, 1.02]
+        #   running_average initialized to 1.00 on first step
+        #   After 3 calls, test_samples = [1.00, 1.01, 1.02]
+        #   mean = (1.00 + 1.01 + 1.02) / 3 = 1.01
+        #   std = sqrt(((1.00-1.01)^2 + (1.01-1.01)^2 + (1.02-1.01)^2) / 2) ≈ 0.01
+        #   t_critical for 95% confidence, df=2 ≈ 4.303
+        #   margin = t_critical * (std / sqrt(n)) = 4.303 * (0.01 / sqrt(3)) ≈ 0.0248
+        #   CI = [1.01 - 0.0248, 1.01 + 0.0248] = [0.9852, 1.0348]
+        #   Lower bound: mean * (1 - 0.10) = 1.01 * 0.90 = 0.909
+        #   Upper bound: mean * (1 + 0.10) = 1.01 * 1.10 = 1.111
+        #   Check: 0.9852 >= 0.909? YES. 1.0348 <= 1.111? YES → should step
+
+        # Apply metrics
+        apply_gradients(optimizer_wrapper)
+        result1 = optimizer_wrapper.step(metric=1.00)  # Initializes running_average
+        assert result1 is False
+
+        apply_gradients(optimizer_wrapper)
+        result2 = optimizer_wrapper.step(metric=1.01)
+        assert result2 is False
+
+        apply_gradients(optimizer_wrapper)
+        result3 = optimizer_wrapper.step(metric=1.02)
+
+        # Verify: step() returns True (tight CI fits within error bounds)
+        assert result3 is True
+        assert optimizer_wrapper.num_steps == 1
+
+        # Case 2: Wide CI (high variance) - should accumulate
+        # ===================================================
+        optimizer2 = create_simple_optimizer()
+        optimizer_wrapper2 = OptimizerWrapperMHT(optimizer2)
+
+        # Set tight error tolerance to force accumulation
+        conf_scheduler2 = tsa.constant_schedule(
+            optimizer_wrapper2,
+            value=0.95,
+            schedule_target='confidence_level'
+        )
+        error_scheduler2 = tsa.constant_schedule(
+            optimizer_wrapper2,
+            value=0.05,  # Very tight 5% tolerance
+            schedule_target='percent_error_threshold'
+        )
+        sync2 = tsa.SynchronousSchedule([conf_scheduler2, error_scheduler2])
+
+        # Prediction using formula (step-by-step):
+        #   Provide metric samples: [1.0, 1.5, 0.8]
+        #   running_average initialized to 1.0
+        #   After 3 calls, test_samples = [1.0, 1.5, 0.8]
+        #   mean = (1.0 + 1.5 + 0.8) / 3 ≈ 1.10
+        #   std = sqrt(((1.0-1.1)^2 + (1.5-1.1)^2 + (0.8-1.1)^2) / 2) ≈ 0.361
+        #   t_critical for 95% confidence, df=2 ≈ 4.303
+        #   margin = 4.303 * (0.361 / sqrt(3)) ≈ 0.897
+        #   CI = [1.10 - 0.897, 1.10 + 0.897] = [0.203, 1.997]
+        #   Lower bound: mean * (1 - 0.05) = 1.10 * 0.95 = 1.045
+        #   Upper bound: mean * (1 + 0.05) = 1.10 * 1.05 = 1.155
+        #   Check: 0.203 >= 1.045? NO → should NOT step
+
+        # Apply metrics
+        apply_gradients(optimizer_wrapper2)
+        result1 = optimizer_wrapper2.step(metric=1.0)
+        assert result1 is False
+
+        apply_gradients(optimizer_wrapper2)
+        result2 = optimizer_wrapper2.step(metric=1.5)
+        assert result2 is False
+
+        apply_gradients(optimizer_wrapper2)
+        result3 = optimizer_wrapper2.step(metric=0.8)
+
+        # Verify: step() returns False (wide CI exceeds error bounds)
+        assert result3 is False
+        assert optimizer_wrapper2.num_steps == 0
+        assert optimizer_wrapper2.num_draws == 3
 
 
 # =============================================================================

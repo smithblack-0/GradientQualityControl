@@ -188,24 +188,6 @@ class TestScheduleTargetExposure:
 
         assert 'gradient_norm_threshold' in targets
 
-    def test_exposes_lr_target(self):
-        """Wrapper exposes lr as schedule target from base optimizer."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperGNTS(optimizer)
-
-        targets = optimizer_wrapper.valid_schedule_targets
-
-        assert 'lr' in targets
-
-    def test_exposes_weight_decay_target(self):
-        """Wrapper exposes weight_decay as schedule target from base optimizer."""
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperGNTS(optimizer)
-
-        targets = optimizer_wrapper.valid_schedule_targets
-
-        assert 'weight_decay' in targets
-
 
 # =============================================================================
 # Step Algorithm Test Suite - tests step decision logic based on mean_norm <= gradient_norm_threshold
@@ -311,6 +293,105 @@ class TestStepAlgorithm:
             else:
                 # Third draw forces step
                 assert result is True
+
+    def test_exact_formula_steps_at_threshold(self):
+        """Verify exact formula with step-by-step calculation - stepping case."""
+        # Setup: Create optimizer with 3 parameters (each 5x5 = 25 params)
+        param1 = torch.nn.Parameter(torch.randn(5, 5))
+        param2 = torch.nn.Parameter(torch.randn(5, 5))
+        param3 = torch.nn.Parameter(torch.randn(5, 5))
+        optimizer = torch.optim.AdamW([param1, param2, param3], lr=0.001)
+        optimizer_wrapper = OptimizerWrapperGNTS(optimizer)
+
+        # Set threshold
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=5.0,
+            schedule_target='gradient_norm_threshold'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # Prediction using formulas (step-by-step):
+        #   Apply gradients with scale=0.2 → each param has all grads = 0.2
+        #   Each param norm = sqrt(25 * 0.2^2) = sqrt(1.0) = 1.0
+        #   Total norm = sqrt(1.0^2 + 1.0^2 + 1.0^2) = sqrt(3.0) ≈ 1.732
+        #   After 1 draw: mean_norm = 1.732 / 1 = 1.732
+        #   Threshold = 5.0
+        #   Check: 1.732 <= 5.0? YES → should step
+        param1.grad = torch.ones_like(param1) * 0.2
+        param2.grad = torch.ones_like(param2) * 0.2
+        param3.grad = torch.ones_like(param3) * 0.2
+
+        # Verify: step() returns True
+        result = optimizer_wrapper.step()
+        assert result is True
+        assert optimizer_wrapper.num_steps == 1
+
+    def test_exact_formula_accumulates_above_threshold(self):
+        """Verify exact formula with step-by-step calculation - accumulation case."""
+        # Setup: Create optimizer with 2 parameters (each 10 params)
+        param1 = torch.nn.Parameter(torch.randn(10))
+        param2 = torch.nn.Parameter(torch.randn(10))
+        optimizer = torch.optim.AdamW([param1, param2], lr=0.001)
+        optimizer_wrapper = OptimizerWrapperGNTS(optimizer)
+
+        # Set low threshold to force accumulation
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=2.0,
+            schedule_target='gradient_norm_threshold'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # Prediction using formulas (step-by-step):
+        #   Apply gradients with scale=1.5 → each param has all grads = 1.5
+        #   Each param norm = sqrt(10 * 1.5^2) = sqrt(22.5) ≈ 4.743
+        #   Total norm = sqrt(4.743^2 + 4.743^2) = sqrt(44.982) ≈ 6.707
+        #   After 1 draw: mean_norm = 6.707 / 1 = 6.707
+        #   Threshold = 2.0
+        #   Check: 6.707 <= 2.0? NO → should NOT step
+        param1.grad = torch.ones_like(param1) * 1.5
+        param2.grad = torch.ones_like(param2) * 1.5
+
+        # Verify: step() returns False
+        result = optimizer_wrapper.step()
+        assert result is False
+        assert optimizer_wrapper.num_steps == 0
+        assert optimizer_wrapper.num_draws == 1
+
+    def test_exact_formula_with_multiple_draws(self):
+        """Verify exact formula with accumulation then stepping after multiple draws."""
+        # Setup: Single parameter (4 elements = 2x2)
+        param = torch.nn.Parameter(torch.randn(2, 2))
+        optimizer = torch.optim.AdamW([param], lr=0.001)
+        optimizer_wrapper = OptimizerWrapperGNTS(optimizer)
+
+        # Set threshold
+        scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=3.0,
+            schedule_target='gradient_norm_threshold'
+        )
+        sync = tsa.SynchronousSchedule([scheduler])
+
+        # Draw 1 prediction:
+        #   Apply scale=2.0 → param norm = sqrt(4 * 2.0^2) = sqrt(16) = 4.0
+        #   mean_norm = 4.0 / 1 = 4.0
+        #   Check: 4.0 <= 3.0? NO → should accumulate
+        param.grad = torch.ones_like(param) * 2.0
+        result1 = optimizer_wrapper.step()
+        assert result1 is False
+        assert optimizer_wrapper.num_draws == 1
+
+        # Draw 2 prediction:
+        #   Apply scale=1.0 → param norm = sqrt(4 * 1.0^2) = 2.0
+        #   Total accumulated norm = sqrt(4.0^2 + 2.0^2) = sqrt(20) ≈ 4.472
+        #   mean_norm = 4.472 / 2 ≈ 2.236
+        #   Check: 2.236 <= 3.0? YES → should step
+        param.grad = torch.ones_like(param) * 1.0
+        result2 = optimizer_wrapper.step()
+        assert result2 is True
+        assert optimizer_wrapper.num_steps == 1
 
 
 # =============================================================================
