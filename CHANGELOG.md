@@ -1,11 +1,34 @@
 # Changelog
 
+## 0.10.12
+
+**Test Suite Audit Fixes and Enhancements**
+
+- Applied 8 fixes from comprehensive audit of all 5 concrete wrapper test suites
+- Removed base class test duplication from GNTS, SBC, MHT (6 tests removed - lr/wd exposure already tested in base)
+- Added formula verification tests: GNTS (3 tests), SBC (3 tests), MHT (1 test with 2 cases)
+- Enhanced GNS distributed tests with single-device control comparison for timing verification
+- Updated GNS documentation to specify MIN aggregation for noise_tolerance parameter
+- Changed test count references in changelog to use inequalities (30+, 20+) instead of exact counts
+- Renamed SBC replicated test to accurately describe formula verification behavior
+- Fixed inline import violations in test files
+
+## 0.10.11
+
+**Concrete Test Suite Audit**
+
+- Conducted systematic audit of all 5 concrete wrapper test suites for contract compliance
+- Identified 8 issues: missing aggregation documentation (GNS), base class test duplication (GNTS, SBC, MHT), brittle changelog counts (GNR, GNS), base optimizer assertions in wrapper test (GNR), misleading test name (SBC)
+- Identified 4 enhancement opportunities: formula verification gaps (GNTS, SBC, MHT), distributed test control comparison missing (GNS)
+- All findings documented with file:line references and approved for implementation
+- Audit followed DDD methodology validating tests against documented contracts
+
 ## 0.10.10
 
 **GNS Test Implementation**
 
 - Implemented comprehensive test suite for OptimizerWrapperGNS (Gradient Noise Scale)
-- 26 tests across 8 test suites following DDD black-box methodology
+- 20+ tests across 8 test suites following DDD black-box methodology
 - Tests verify 6-step algorithm from contract using formulas to predict behavior
 - Includes distributed tests (replicated history sharing, sharded norm merging)
 - Includes factory tests for both `make_gns_with_cosine_annealing_schedule` and `make_gns_default`
@@ -18,7 +41,7 @@
 **GNR Test Implementation**
 
 - Implemented comprehensive test suite for OptimizerWrapperGNR (Gradient Norm Rescaler)
-- 39 tests across 10 test suites following DDD black-box methodology
+- 30+ tests across 10 test suites following DDD black-box methodology
 - Tests verify gradient rescaling to target norm using documented formula
 - Includes distributed tests for both replicated and sharded modes with multiple scenarios
 - Includes factory tests for both `make_gnr_with_cosine_annealing_schedule` and `make_gnr_with_cosine_annealing_schedule_conventional_lr`
