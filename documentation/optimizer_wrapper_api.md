@@ -263,16 +263,17 @@ Presume the existence of a function `compute_t_confidence_interval(samples, conf
 
 The system maintains:
 - `current_stage_metrics = [m1, m2, ..., mn]` - metrics accumulated since last step
-- `running_average` - scalar initialized to first metric value, updated on each step
+- `running_average` - scalar initialized to first metric value, updated via exponential moving average on every `step()` call
 
 On each `step(metric)` call:
 
-1. Append `metric` to `current_stage_metrics`
-2. Compute `test_samples = [running_average, m1, m2... mn]`
-3. Compute `(CI_low, CI_high) = compute_t_confidence_interval(test_samples, confidence_level)`
-4. Compute `mean = mean(test_samples)`
-5. Step if `(CI_low >= mean * (1 - percent_error_threshold) AND CI_high <= mean * (1 + percent_error_threshold))` OR `num_draws >= max_batch_draws`
-6. If stepped: update `running_average` (implementation detail), clear `current_stage_metrics`
+1. Update `running_average` from `metric` using exponential moving average
+2. Append `metric` to `current_stage_metrics`
+3. Compute `test_samples = [running_average, m1, m2... mn]`
+4. Compute `(CI_low, CI_high) = compute_t_confidence_interval(test_samples, confidence_level)`
+5. Compute `mean = mean(test_samples)`
+6. Step if `(CI_low >= mean * (1 - percent_error_threshold) AND CI_high <= mean * (1 + percent_error_threshold))` OR `num_draws >= max_batch_draws`
+7. If stepped: clear `current_stage_metrics`
 
 Special cases: If `mean == 0`, do not step; we just started. Running average provides implicit sample, no minimum count required.
 
