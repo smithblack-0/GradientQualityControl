@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+**First Implementation Case**
+
+- Discovered bug in tests and contract for abstract base case
+
 ## 0.10.12
 
 **Test Suite Audit Fixes and Enhancements**

@@ -7,6 +7,9 @@ from .scheduling_utils import (
     get_quadratic_batch_schedule,
 )
 from .base import AbstractOptimizerWrapper
+from .implementations.schedule_batch_controller import (OptimizerWrapperSBC,
+                                                        make_sbc_with_polynomial_schedule,
+                                                        make_sbc_with_polynomial_schedule_conventional_lr)
 # from .gradient_norm_threshold_scheduler import OptimizerWrapperGNTS
 # from .scheduled_batch_controller import OptimizerWrapperSBC
 
@@ -22,10 +25,12 @@ __all__ = [
     # "OptimizerWrapperMHT",
     # "OptimizerWrapperSBC",
     # "OptimizerWrapperGNTS",
-    "get_quadratic_batch_schedule",
-    "get_direct_cosine_annealing_with_warmup",
-    "get_norm_threshold_cosine_annealing_with_warmup",
-    "get_curved_batch_schedule",
+
+    # SBC imports.
+    "OptimizerWrapperSBC",
+    "make_sbc_with_polynomial_schedule",
+    "make_sbc_with_polynomial_schedule_conventional_lr",
+
     "__version__",
 ]
 

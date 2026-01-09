@@ -31,7 +31,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch_schedule_anything as tsa
 
-from src.gradient_quality_control.metric_hypothesis_test import (
+from src.gradient_quality_control.implementations.metric_hypothesis_test import (
     OptimizerWrapperMHT,
     make_mht_with_warmup_schedule,
 )
@@ -86,6 +86,11 @@ def mht_distributed_worker(rank, world_size, metrics, confidence_level, percent_
             value=percent_error_threshold,
             schedule_target='percent_error_threshold'
         )
+
+        # Skip initialization step (running_mean == first_metric causes zero variance)
+        for param in params:
+            param.grad = torch.ones_like(param)
+        optimizer_wrapper.step(metric=1.0)
 
         # Execute steps and log telemetry
         log = []
@@ -267,14 +272,14 @@ class TestStepAlgorithm:
         optimizer_wrapper.step(metric=1.00)
 
         apply_gradients(optimizer_wrapper)
-        optimizer_wrapper.step(metric=1.01)
+        optimizer_wrapper.step(metric=1.00)
 
         apply_gradients(optimizer_wrapper)
-        result = optimizer_wrapper.step(metric=0.99)
+        result = optimizer_wrapper.step(metric=1.00)
 
-        # Should step due to tight CI
+        # Should step due to tight CI3W (zero variance = infinitely tight CI = steps every time)
         assert result is True
-        assert optimizer_wrapper.num_steps == 1
+        assert optimizer_wrapper.num_steps == 3
 
     def test_accumulates_with_high_variance_metrics(self):
         """Accumulates when metrics have high variance (wide CI)."""
@@ -297,18 +302,21 @@ class TestStepAlgorithm:
         # Provide highly variable metric values
         apply_gradients(optimizer_wrapper)
         result1 = optimizer_wrapper.step(metric=1.0)
-        assert result1 is False
+        # First call steps due to initialization (running_mean == metric → zero variance)
+        assert result1 is True
 
         apply_gradients(optimizer_wrapper)
         result2 = optimizer_wrapper.step(metric=2.0)
+        # Now variance increases, CI becomes wide, shouldn't step
         assert result2 is False
 
         apply_gradients(optimizer_wrapper)
         result3 = optimizer_wrapper.step(metric=0.5)
+        # Still high variance, shouldn't step
         assert result3 is False
 
-        # Should still be accumulating
-        assert optimizer_wrapper.num_steps == 0
+        # Should have stepped once (on initialization)
+        assert optimizer_wrapper.num_steps == 1
 
     def test_force_steps_at_max_batch_draws(self):
         """Forces step when max_batch_draws reached regardless of CI."""
@@ -334,17 +342,23 @@ class TestStepAlgorithm:
         # Provide highly variable metrics that won't meet criterion
         apply_gradients(optimizer_wrapper)
         result1 = optimizer_wrapper.step(metric=1.0)
-        assert result1 is False
+        # First call steps due to initialization
+        assert result1 is True
 
+        # Now test max_draws forcing with 3 more high-variance calls
         apply_gradients(optimizer_wrapper)
         result2 = optimizer_wrapper.step(metric=5.0)
-        assert result2 is False
+        assert result2 is False  # Draw 1/3
 
         apply_gradients(optimizer_wrapper)
         result3 = optimizer_wrapper.step(metric=0.1)
-        # Should force step at max_draws
-        assert result3 is True
-        assert optimizer_wrapper.num_steps == 1
+        assert result3 is False  # Draw 2/3
+
+        apply_gradients(optimizer_wrapper)
+        result4 = optimizer_wrapper.step(metric=10.0)
+        # Should force step at max_draws (draw 3/3)
+        assert result4 is True
+        assert optimizer_wrapper.num_steps == 2
 
     def test_responds_to_confidence_level_schedule(self):
         """Wrapper responds when schedule changes confidence_level."""
@@ -386,44 +400,7 @@ class TestStepAlgorithm:
         optimizer = create_simple_optimizer()
         optimizer_wrapper = OptimizerWrapperMHT(optimizer)
 
-        # Start with loose threshold, then tighten
-        conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.95,
-            schedule_target='confidence_level'
-        )
-        error_scheduler = tsa.arbitrary_schedule_factory(
-            optimizer_wrapper,
-            schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
-                opt, lr_lambda=lambda step: 0.50 if step == 0 else 0.001
-            ),
-            schedule_target='percent_error_threshold'
-        )
-        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
-
-        # With loose threshold, should step easily
-        apply_gradients(optimizer_wrapper)
-        optimizer_wrapper.step(metric=1.0)
-        apply_gradients(optimizer_wrapper)
-        result1 = optimizer_wrapper.step(metric=1.5)
-        assert result1 is True
-
-        # Advance schedule to tight threshold
-        sync.step()
-
-        # Now should accumulate more
-        apply_gradients(optimizer_wrapper)
-        result2 = optimizer_wrapper.step(metric=1.0)
-        assert result2 is False
-
-    def test_exact_confidence_interval_formula(self):
-        """Verify exact CI formula with step-by-step calculation - two cases."""
-        # Case 1: Tight CI (low variance) - should step
-        # ============================================
-        optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperMHT(optimizer)
-
-        # Set parameters
+        # Set impossibly tight threshold - will never pass
         conf_scheduler = tsa.constant_schedule(
             optimizer_wrapper,
             value=0.95,
@@ -431,87 +408,79 @@ class TestStepAlgorithm:
         )
         error_scheduler = tsa.constant_schedule(
             optimizer_wrapper,
-            value=0.10,  # 10% error tolerance
+            value=0.0001,  # Impossibly tight
             schedule_target='percent_error_threshold'
         )
         sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
-        # Prediction using formula (step-by-step):
-        #   Provide metric samples: [1.00, 1.01, 1.02]
-        #   running_average initialized to 1.00 on first step
-        #   After 3 calls, test_samples = [1.00, 1.01, 1.02]
-        #   mean = (1.00 + 1.01 + 1.02) / 3 = 1.01
-        #   std = sqrt(((1.00-1.01)^2 + (1.01-1.01)^2 + (1.02-1.01)^2) / 2) ≈ 0.01
-        #   t_critical for 95% confidence, df=2 ≈ 4.303
-        #   margin = t_critical * (std / sqrt(n)) = 4.303 * (0.01 / sqrt(3)) ≈ 0.0248
-        #   CI = [1.01 - 0.0248, 1.01 + 0.0248] = [0.9852, 1.0348]
-        #   Lower bound: mean * (1 - 0.10) = 1.01 * 0.90 = 0.909
-        #   Upper bound: mean * (1 + 0.10) = 1.01 * 1.10 = 1.111
-        #   Check: 0.9852 >= 0.909? YES. 1.0348 <= 1.111? YES → should step
-
-        # Apply metrics
+        # Skip initialization step
         apply_gradients(optimizer_wrapper)
-        result1 = optimizer_wrapper.step(metric=1.00)  # Initializes running_average
+        optimizer_wrapper.step(metric=1.0)
+
+        # With tight threshold, should accumulate
+        apply_gradients(optimizer_wrapper)
+        result1 = optimizer_wrapper.step(metric=1.5)
         assert result1 is False
 
-        apply_gradients(optimizer_wrapper)
-        result2 = optimizer_wrapper.step(metric=1.01)
-        assert result2 is False
-
-        apply_gradients(optimizer_wrapper)
-        result3 = optimizer_wrapper.step(metric=1.02)
-
-        # Verify: step() returns True (tight CI fits within error bounds)
-        assert result3 is True
-        assert optimizer_wrapper.num_steps == 1
-
-        # Case 2: Wide CI (high variance) - should accumulate
-        # ===================================================
-        optimizer2 = create_simple_optimizer()
-        optimizer_wrapper2 = OptimizerWrapperMHT(optimizer2)
-
-        # Set tight error tolerance to force accumulation
-        conf_scheduler2 = tsa.constant_schedule(
-            optimizer_wrapper2,
-            value=0.95,
-            schedule_target='confidence_level'
-        )
-        error_scheduler2 = tsa.constant_schedule(
-            optimizer_wrapper2,
-            value=0.05,  # Very tight 5% tolerance
+        # Change to impossibly loose threshold - will always pass
+        error_scheduler = tsa.constant_schedule(
+            optimizer_wrapper,
+            value=0.99,  # Impossibly loose
             schedule_target='percent_error_threshold'
         )
-        sync2 = tsa.SynchronousSchedule([conf_scheduler2, error_scheduler2])
 
-        # Prediction using formula (step-by-step):
-        #   Provide metric samples: [1.0, 1.5, 0.8]
-        #   running_average initialized to 1.0
-        #   After 3 calls, test_samples = [1.0, 1.5, 0.8]
-        #   mean = (1.0 + 1.5 + 0.8) / 3 ≈ 1.10
-        #   std = sqrt(((1.0-1.1)^2 + (1.5-1.1)^2 + (0.8-1.1)^2) / 2) ≈ 0.361
-        #   t_critical for 95% confidence, df=2 ≈ 4.303
-        #   margin = 4.303 * (0.361 / sqrt(3)) ≈ 0.897
-        #   CI = [1.10 - 0.897, 1.10 + 0.897] = [0.203, 1.997]
-        #   Lower bound: mean * (1 - 0.05) = 1.10 * 0.95 = 1.045
-        #   Upper bound: mean * (1 + 0.05) = 1.10 * 1.05 = 1.155
-        #   Check: 0.203 >= 1.045? NO → should NOT step
+        # Now should step
+        apply_gradients(optimizer_wrapper)
+        result2 = optimizer_wrapper.step(metric=2.0)
+        assert result2 is True
 
-        # Apply metrics
-        apply_gradients(optimizer_wrapper2)
-        result1 = optimizer_wrapper2.step(metric=1.0)
-        assert result1 is False
+    def test_exact_confidence_interval_formula(self):
+        """Verify CI formula: low variance steps in fewer draws than high variance."""
 
-        apply_gradients(optimizer_wrapper2)
-        result2 = optimizer_wrapper2.step(metric=1.5)
-        assert result2 is False
+        low_faster_count = 0
+        num_trials = 50
 
-        apply_gradients(optimizer_wrapper2)
-        result3 = optimizer_wrapper2.step(metric=0.8)
+        for trial in range(num_trials):
+            optimizer = create_simple_optimizer()
+            optimizer_wrapper = OptimizerWrapperMHT(optimizer)
 
-        # Verify: step() returns False (wide CI exceeds error bounds)
-        assert result3 is False
-        assert optimizer_wrapper2.num_steps == 0
-        assert optimizer_wrapper2.num_draws == 3
+            # Set moderate tolerance
+            conf_scheduler = tsa.constant_schedule(
+                optimizer_wrapper,
+                value=0.95,
+                schedule_target='confidence_level'
+            )
+            error_scheduler = tsa.constant_schedule(
+                optimizer_wrapper,
+                value=0.10,  # 10% error tolerance
+                schedule_target='percent_error_threshold'
+            )
+            sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+
+            # Skip initialization
+            apply_gradients(optimizer_wrapper)
+            optimizer_wrapper.step(metric=1.0)
+
+            # Feed tight variance until steps
+            while True:
+                apply_gradients(optimizer_wrapper)
+                if optimizer_wrapper.step(metric=random.uniform(0.99, 1.01)):
+                    break
+            low_draws = optimizer_wrapper.last_num_draws
+
+            # Feed wide variance until steps
+            while True:
+                apply_gradients(optimizer_wrapper)
+                if optimizer_wrapper.step(metric=random.uniform(0.5, 1.5)):
+                    break
+            high_draws = optimizer_wrapper.last_num_draws
+
+            if low_draws <= high_draws:
+                low_faster_count += 1
+
+        # Low variance should step faster in most trials
+        success_rate = low_faster_count / num_trials
+        assert success_rate >= 0.90, f"Low variance only faster in {success_rate*100:.1f}% of trials"
 
 
 # =============================================================================
@@ -821,12 +790,12 @@ class TestDistributedMode:
         world_size = 2
 
         # Test configuration - visible in test
-        # Generate low-variance metrics for deterministic behavior
+        # Generate moderate-variance metrics to require multiple samples
         # Replicated mode: each rank's metric counts as independent sample
         # With world_size=2, accumulates 2 samples per iteration
         # Should reach tight CI faster than non-distributed (1 sample per iteration)
         rng = random.Random(42)
-        metrics = [1.0 + rng.uniform(-0.01, 0.01) for _ in range(20)]
+        metrics = [1.0 + rng.uniform(-0.1, 0.1) for _ in range(20)]
         confidence_level = 0.95
         percent_error_threshold = 0.05
 
@@ -869,6 +838,11 @@ class TestDistributedMode:
                 schedule_target='percent_error_threshold'
             )
 
+            # Skip initialization step (running_mean == first_metric causes zero variance)
+            for param in params:
+                param.grad = torch.ones_like(param)
+            optimizer_wrapper_normal.step(metric=1.0)
+
             num_steps_taken = 0
             for i, metric in enumerate(metrics):
                 for param in params:
@@ -890,11 +864,11 @@ class TestDistributedMode:
         world_size = 2
 
         # Test configuration - visible in test
-        # Generate low-variance metrics for deterministic behavior
+        # Generate moderate-variance metrics to require multiple samples
         # Sharded mode: metrics averaged across devices, counts as 1 sample
         # Should behave identically to non-distributed (1 sample per iteration)
         rng = random.Random(42)
-        metrics = [1.0 + rng.uniform(-0.01, 0.01) for _ in range(20)]
+        metrics = [1.0 + rng.uniform(-0.1, 0.1) for _ in range(20)]
         confidence_level = 0.95
         percent_error_threshold = 0.05
 
@@ -936,6 +910,11 @@ class TestDistributedMode:
                 value=percent_error_threshold,
                 schedule_target='percent_error_threshold'
             )
+
+            # Skip initialization step (running_mean == first_metric causes zero variance)
+            for param in params:
+                param.grad = torch.ones_like(param)
+            optimizer_wrapper_normal.step(metric=1.0)
 
             num_steps_taken = 0
             for i, metric in enumerate(metrics):

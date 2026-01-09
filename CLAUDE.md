@@ -54,6 +54,44 @@ This project uses **Document-Driven Development (DDD)**. Read `dev.md` for the f
 2. Refactor code without changing documented behavior
 3. Tests should continue to pass unchanged
 
+### Resolving Conflicts
+
+When documentation, tests, and code disagree, you're in a **conflict state**. There is NO source of truth during a conflict - all three sources are suspect until the conflict is resolved.
+
+**Critical: Do NOT look for hierarchy or "which is more authoritative."** During conflicts, reason about what SHOULD be correct based on evidence and logic.
+
+**Conflict Resolution Process:**
+
+1. **IDENTIFY** - Recognize the conflict (e.g., test expects X, code does Y)
+2. **GATHER** - Read ALL sources completely:
+   - What does the spec say?
+   - What is the test trying to verify?
+   - What does the code actually do?
+   - What does the user say is the intended behavior?
+3. **ANALYZE** - Reason about correct behavior:
+   - Which behavior makes logical sense?
+   - What are the design implications?
+   - Could this reveal a deeper design issue?
+4. **RESOLVE** - Propose which source(s) are wrong and WHY:
+   - Don't ask "what should it be?" - propose what you think is correct
+   - Base proposals on evidence and reasoning
+   - Get confirmation before proceeding
+5. **PROPAGATE** - Apply resolution through the system:
+   - Fix the identified incorrect source(s)
+   - The corrected understanding becomes the new worldview
+   - Re-evaluate remaining conflicts with the new worldview
+   - If insufficient information, generate a new conflict to resolve
+
+**Anti-patterns to avoid:**
+- Asking "what should the behavior be?" without proposing an answer
+- Trying to patch symptoms instead of understanding root cause
+- Assuming spec/test/code has inherent authority during conflict
+- Proposing fixes before gathering complete context from all three sources
+
+**Standard workflow (no conflict):** spec → test → implementation
+
+**Conflict workflow:** gather context → analyze → resolve → propagate (NOT hierarchical)
+
 ## Detecting and Reporting Problems
 
 ### Code Smells to Watch For
