@@ -30,7 +30,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch_schedule_anything as tsa
 
-from src.gradient_quality_control.gradient_norm_threshold_scheduler import (
+from src.gradient_quality_control.implementations.gradient_norm_threshold_scheduler import (
     OptimizerWrapperGNTS,
     make_gnts_with_cosine_annealing_schedule,
     make_gnts_with_cosine_annealing_schedule_conventional_lr,
@@ -693,12 +693,12 @@ class TestMakeGNTSWithCosineAnnealingScheduleConventionalLR:
         )
 
         # Weight decay should stay constant (no scheduling)
-        wd_start = scheduler.get_last_schedule('weight_decay')[0]
+        wd_start = optimizer.param_groups[0]['weight_decay']
 
         for _ in range(1000):
             scheduler.step()
 
-        wd_end = scheduler.get_last_schedule('weight_decay')[0]
+        wd_end = optimizer.param_groups[0]['weight_decay']
 
         # Should remain approximately the same
         assert math.isclose(wd_start, wd_end, rel_tol=0.01)

@@ -1,4 +1,16 @@
-# Changelog3
+# Changelog
+
+## 0.11.4
+
+- Implemented the GNTS implementation to specification.
+- Resolved a minor test issue; was looking for 'weight_decay' through schedule where it does not exist; instead should have looked through optimizer.
+- All test passing. GNTS now working.
+
+## 0.11.3
+
+**MHT Specification and Test Synchronization**
+
+- Fixed specification bug in `optimizer_wrapper_api.md`: running_average now correctly documented to update on every step() call, not just when stepping
 - Fixed factory function bug in `make_mht_with_warmup_schedule`: learning rate schedule now uses 1.0 multiplier instead of absolute lr value (ScheduleAnything uses multipliers)
 - Fixed multiple test issues in test_metric_hypothesis_test.py following DDD conflict resolution:
   - Initialization behavior: tests now account for first metric causing zero variance and immediate stepping
