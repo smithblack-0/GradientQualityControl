@@ -25,13 +25,12 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 
-from gradient_quality_control import OptimizerWrapperGNS
-from gradient_quality_control.factories import (
+from src.gradient_quality_control.implementations.gradient_noise_scale import OptimizerWrapperGNS
+from src.gradient_quality_control.implementations.gradient_noise_scale import (
     make_gns_with_cosine_annealing_schedule,
     make_gns_default,
 )
-import gradient_quality_control.optimizer_utils as tsa
-
+import torch_schedule_anything as tsa
 
 # Helper Functions
 

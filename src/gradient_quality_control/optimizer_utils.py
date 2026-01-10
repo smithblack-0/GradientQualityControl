@@ -1,9 +1,8 @@
 from numbers import Number
-from typing import List, Any
+from typing import List, Any, Callable
 
 import torch
 from torch.optim import Optimizer
-
 
 
 def optimizer_get_collection(optimizer: Optimizer,
@@ -20,10 +19,11 @@ def optimizer_get_collection(optimizer: Optimizer,
         output.append(group[name])
     return output
 
-def optimizer_multiply_gradients(optimizer: Optimizer, num: Number)->None:
+
+def multiply_optimizer_gradients(optimizer: Optimizer, num: Number)->None:
     """
     Multiplies all gradients in an optimizer by a number
-    :param optimizer: Place to get gradients from
+    :param optimizer:Place to get gradients from
     :param num: Number to multiply by.
     """
     param_groups = optimizer_get_collection(optimizer, "params")
@@ -78,3 +78,52 @@ def compute_grad_norm_from_optimizer(optimizer: Optimizer) -> float:
         Must be called after .backward() to have populated gradients.
     """
     return optimizer_get_grad_norm(optimizer)
+
+def setup_norm_logging_in_optimizer(optimizer: Optimizer)->Callable[[], None]:
+    """
+    Attaches a callback hook that will cause parameters to
+    end up with the norm of the last gradients that flowed
+    through them on a field
+
+    This is necessary as when performing gradient accumulation
+    torch does not provide access to the gradient vectors before
+    adding them into the accumulator unless intercepted
+
+    A callable is returned that will release the hooks if invoked.
+    """
+    release = []
+    parameters = []
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            parameters.append(p)
+
+
+    for parameter in parameters:
+        if hasattr(parameter, "_has_norm_logging"):
+            continue
+
+        def hook(grad: torch.Tensor, param = parameter):
+            param._last_grad_norm = grad.norm()
+            return grad
+        parameter._has_norm_logging = True
+        release.append(parameter.register_hook(hook))
+
+    def release_hooks():
+        for hook in release:
+            hook.remove()
+
+    return release_hooks
+
+def get_last_grad_norm_from_optimizer(optimizer: Optimizer)->float:
+    """
+    Gets the last grad norm that was logged.
+    So long as you call this right after
+    backwards you get the raw grad norms
+    for the batch
+    """
+    norms = []
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            norms.append(p._last_grad_norm)
+    norms = torch.tensor(norms)
+    return norms.norm().item()
