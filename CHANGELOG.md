@@ -1,4 +1,24 @@
-# Changelog
+# Changelog3
+- Fixed factory function bug in `make_mht_with_warmup_schedule`: learning rate schedule now uses 1.0 multiplier instead of absolute lr value (ScheduleAnything uses multipliers)
+- Fixed multiple test issues in test_metric_hypothesis_test.py following DDD conflict resolution:
+  - Initialization behavior: tests now account for first metric causing zero variance and immediate stepping
+  - Test approach: replaced mathematical prediction with empirical testing (50 trials, 90% threshold) for robustness
+  - Schedule responsiveness tests: now use extreme values (impossibly tight/loose) to guarantee behavioral contrast
+  - Distributed mode tests: increased metric variance (±0.01 to ±0.1) to require multiple samples before stepping
+- All 32 MHT tests now pass with spec, tests, and code fully synchronized
+
+## 0.11.2
+
+**MHT Implementation**
+
+- Implemented OptimizerWrapperMHT (Metric Hypothesis Test) following post-0.9.0 architecture
+- Steps optimizer when confidence interval around metric falls within percent_error_threshold
+- Uses Student's t-distribution for statistical hypothesis testing with configurable confidence level
+- Maintains exponential moving average (update_beta parameter) and per-stage history for variance estimation
+- Exposes schedule targets: confidence_level, percent_error_threshold (MEAN aggregation across param groups)
+- Distributed support: replicated mode treats each rank's metric as independent sample, sharded mode averages metrics
+- Implemented `make_mht_with_warmup_schedule` factory function with lr cosine annealing and constant statistical parameters
+- Implementation follows specification in `documentation/optimizer_wrapper_api.md` and `documentation/api_guide.md`
 
 ## 0.11.1
 
