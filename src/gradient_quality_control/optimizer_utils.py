@@ -106,6 +106,7 @@ def setup_norm_logging_in_optimizer(optimizer: Optimizer)->Callable[[], None]:
             param._last_grad_norm = grad.norm()
             return grad
         parameter._has_norm_logging = True
+
         release.append(parameter.register_hook(hook))
 
     def release_hooks():

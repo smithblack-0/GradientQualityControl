@@ -129,7 +129,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
 
         tolerance = self._get_state("noise_tolerance", aggregate_behavior="min")
         gns = self.compute_approximate_gns()
-        if gns <= self.num_draws * tolerance or self.num_draws >= self.max_batch_draws:
+        if gns <= self.num_draws * tolerance or self.num_draws >= self.max_draws:
             self._take_optimizer_step()
             self.clear_history()
             return True
