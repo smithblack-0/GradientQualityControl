@@ -1,21 +1,24 @@
+import math
+from numbers import Number
+
 import pytest
 import torch
 from torch.optim import SGD, Adam
-from numbers import Number
-import math
 
-from src.gradient_quality_control.optim_utils import (
-    optimizer_extend,
+from src.gradient_quality_control.optimizer_utils import (
+    compute_grad_norm_from_optimizer,
+    get_last_grad_norm_from_optimizer,
+    multiply_optimizer_gradients,
     optimizer_get_collection,
-    optimizer_multiply_gradients,
     optimizer_get_grad_norm,
-    optimizer_get_raw_grad_norms
+    optimizer_get_raw_grad_norms,
+    setup_norm_logging_in_optimizer,
 )
-
 
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def single_group_optimizer():
@@ -32,93 +35,53 @@ def multi_group_optimizer():
     param2 = torch.randn(3, 7, requires_grad=True)
     param3 = torch.randn(2, requires_grad=True)
 
-    optimizer = SGD([
-        {'params': [param1], 'lr': 0.01},
-        {'params': [param2], 'lr': 0.001},
-        {'params': [param3], 'lr': 0.0001}
-    ])
+    optimizer = SGD(
+        [
+            {"params": [param1], "lr": 0.01},
+            {"params": [param2], "lr": 0.001},
+            {"params": [param3], "lr": 0.0001},
+        ]
+    )
     return optimizer, [param1, param2, param3]
 
 
 @pytest.fixture
 def empty_group_optimizer():
     """Optimizer with empty param groups"""
-    optimizer = SGD([{'params': [], 'lr': 0.01}])
+    optimizer = SGD([{"params": [], "lr": 0.01}])
     return optimizer
-
-
-# ============================================================================
-# Tests for optimizer_extend
-# ============================================================================
-
-class TestOptimizerExtend:
-
-    def test_basic_extension(self, single_group_optimizer):
-        """Test adding a new parameter to param groups"""
-        optimizer, _ = single_group_optimizer
-        result = optimizer_extend(optimizer, 'custom_param', 0.5)
-
-        assert result is optimizer  # Returns same optimizer
-        assert optimizer.param_groups[0]['custom_param'] == 0.5
-
-    def test_extension_multiple_groups(self, multi_group_optimizer):
-        """Test extending all param groups"""
-        optimizer, _ = multi_group_optimizer
-        optimizer_extend(optimizer, 'blubber', 0.01)
-
-        for group in optimizer.param_groups:
-            assert group['blubber'] == 0.01
-
-    def test_existing_key_unchanged(self, single_group_optimizer):
-        """Test that existing keys are not overwritten"""
-        optimizer, _ = single_group_optimizer
-        optimizer.param_groups[0]['custom_param'] = 0.9
-
-        optimizer_extend(optimizer, 'custom_param', 0.5)
-        assert optimizer.param_groups[0]['custom_param'] == 0.9
-
-    def test_non_number_raises_typeerror(self, single_group_optimizer):
-        """Test that non-numeric default values raise TypeError"""
-        optimizer, _ = single_group_optimizer
-
-        with pytest.raises(TypeError, match="Only numbers can be inserted"):
-            optimizer_extend(optimizer, 'bad_param', "not a number")
-
-    def test_empty_param_groups(self, empty_group_optimizer):
-        """Test extending empty param groups"""
-        optimizer = empty_group_optimizer
-        optimizer_extend(optimizer, 'custom_param', 0.5)
-
-        assert optimizer.param_groups[0]['custom_param'] == 0.5
 
 
 # ============================================================================
 # Tests for optimizer_get_collection
 # ============================================================================
 
+
 class TestOptimizerGetCollection:
 
     def test_get_learning_rates(self, multi_group_optimizer):
         """Test retrieving learning rates"""
         optimizer, _ = multi_group_optimizer
-        lrs = optimizer_get_collection(optimizer, 'lr')
+        lrs = optimizer_get_collection(optimizer, "lr")
 
         assert lrs == [0.01, 0.001, 0.0001]
 
     def test_get_params(self, single_group_optimizer):
         """Test retrieving params"""
         optimizer, params = single_group_optimizer
-        retrieved_params = optimizer_get_collection(optimizer, 'params')
+        retrieved_params = optimizer_get_collection(optimizer, "params")
 
         assert len(retrieved_params) == 1
         assert retrieved_params[0] == params
 
-    def test_get_extended_parameter(self, multi_group_optimizer):
-        """Test retrieving custom extended parameters"""
+    def test_get_custom_parameter(self, multi_group_optimizer):
+        """Test retrieving custom parameters added to param groups"""
         optimizer, _ = multi_group_optimizer
-        optimizer_extend(optimizer, 'blubber', 0.9)
+        # Manually add custom parameter to all groups
+        for group in optimizer.param_groups:
+            group["blubber"] = 0.9
 
-        momentums = optimizer_get_collection(optimizer, 'blubber')
+        momentums = optimizer_get_collection(optimizer, "blubber")
         assert momentums == [0.9, 0.9, 0.9]
 
     def test_nonexistent_key_raises_keyerror(self, single_group_optimizer):
@@ -126,14 +89,15 @@ class TestOptimizerGetCollection:
         optimizer, _ = single_group_optimizer
 
         with pytest.raises(KeyError):
-            optimizer_get_collection(optimizer, 'nonexistent_key')
+            optimizer_get_collection(optimizer, "nonexistent_key")
 
 
 # ============================================================================
-# Tests for optimizer_multiply_gradients
+# Tests for multiply_optimizer_gradients
 # ============================================================================
 
-class TestOptimizerMultiplyGradients:
+
+class TestMultiplyOptimizerGradients:
 
     def test_basic_multiplication(self, single_group_optimizer):
         """Test multiplying gradients by a scalar"""
@@ -141,7 +105,7 @@ class TestOptimizerMultiplyGradients:
         param = params[0]
         param.grad = torch.ones_like(param) * 2.0
 
-        optimizer_multiply_gradients(optimizer, 3.0)
+        multiply_optimizer_gradients(optimizer, 3.0)
 
         assert torch.allclose(param.grad, torch.ones_like(param) * 6.0)
 
@@ -153,7 +117,7 @@ class TestOptimizerMultiplyGradients:
         for param in params:
             param.grad = torch.ones_like(param) * 2.0
 
-        optimizer_multiply_gradients(optimizer, 0.5)
+        multiply_optimizer_gradients(optimizer, 0.5)
 
         for param in params:
             assert torch.allclose(param.grad, torch.ones_like(param) * 1.0)
@@ -164,7 +128,7 @@ class TestOptimizerMultiplyGradients:
         param = params[0]
         param.grad = torch.randn_like(param)
 
-        optimizer_multiply_gradients(optimizer, 0.0)
+        multiply_optimizer_gradients(optimizer, 0.0)
 
         assert torch.allclose(param.grad, torch.zeros_like(param))
 
@@ -177,7 +141,7 @@ class TestOptimizerMultiplyGradients:
         # params[1].grad remains None
         params[2].grad = torch.ones_like(params[2]) * 3.0
 
-        optimizer_multiply_gradients(optimizer, 2.0)
+        multiply_optimizer_gradients(optimizer, 2.0)
 
         # Check that real gradients were multiplied
         assert torch.allclose(params[0].grad, torch.ones_like(params[0]) * 4.0)
@@ -191,7 +155,7 @@ class TestOptimizerMultiplyGradients:
         # All gradients are None by default
 
         # Should not raise
-        optimizer_multiply_gradients(optimizer, 2.0)
+        multiply_optimizer_gradients(optimizer, 2.0)
 
         # All should still be None
         for param in params:
@@ -202,6 +166,7 @@ class TestOptimizerMultiplyGradients:
 # Tests for optimizer_get_grad_norm
 # ============================================================================
 
+
 class TestOptimizerGetGradNorm:
 
     def test_single_group_known_norm(self, single_group_optimizer):
@@ -211,7 +176,7 @@ class TestOptimizerGetGradNorm:
 
         # Set gradient to have known norm
         param.grad = torch.ones_like(param) * 2.0
-        expected_norm = math.sqrt((param.grad ** 2).sum().item())
+        expected_norm = math.sqrt((param.grad**2).sum().item())
 
         result = optimizer_get_grad_norm(optimizer)
         assert result == pytest.approx(expected_norm, rel=1e-5)
@@ -231,7 +196,7 @@ class TestOptimizerGetGradNorm:
         norm3 = math.sqrt((params[2].grad ** 2).sum().item())
 
         # Expected: L2 of group norms
-        expected = math.sqrt(norm1 ** 2 + norm2 ** 2 + norm3 ** 2)
+        expected = math.sqrt(norm1**2 + norm2**2 + norm3**2)
 
         result = optimizer_get_grad_norm(optimizer)
         assert result == pytest.approx(expected, rel=1e-5)
@@ -266,16 +231,16 @@ class TestOptimizerGetGradNorm:
         norm2 = 0.0  # Group with None gradients
         norm3 = math.sqrt((params[2].grad ** 2).sum().item())
 
-        expected = math.sqrt(norm1 ** 2 + norm2 ** 2 + norm3 ** 2)
+        expected = math.sqrt(norm1**2 + norm2**2 + norm3**2)
 
         result = optimizer_get_grad_norm(optimizer)
         assert result == pytest.approx(expected, rel=1e-5)
 
 
-
 # ============================================================================
 # Tests for optimizer_get_raw_grad_norms
 # ============================================================================
+
 
 class TestOptimizerGetRawGradNorms:
 
@@ -285,7 +250,7 @@ class TestOptimizerGetRawGradNorms:
         param = params[0]
         param.grad = torch.ones_like(param) * 2.0
 
-        expected_norm = math.sqrt((param.grad ** 2).sum().item())
+        expected_norm = math.sqrt((param.grad**2).sum().item())
         result = optimizer_get_raw_grad_norms(optimizer)
 
         assert len(result) == 1
@@ -304,7 +269,7 @@ class TestOptimizerGetRawGradNorms:
         expected_norms = [
             math.sqrt((params[0].grad ** 2).sum().item()),
             math.sqrt((params[1].grad ** 2).sum().item()),
-            math.sqrt((params[2].grad ** 2).sum().item())
+            math.sqrt((params[2].grad ** 2).sum().item()),
         ]
 
         result = optimizer_get_raw_grad_norms(optimizer)
@@ -325,7 +290,7 @@ class TestOptimizerGetRawGradNorms:
         combined_norm = optimizer_get_grad_norm(optimizer)
 
         # Combined norm should be L2 of raw norms
-        expected_combined = math.sqrt(sum(n ** 2 for n in raw_norms))
+        expected_combined = math.sqrt(sum(n**2 for n in raw_norms))
 
         assert combined_norm == pytest.approx(expected_combined, rel=1e-5)
 
@@ -368,3 +333,158 @@ class TestOptimizerGetRawGradNorms:
         assert result[0] == pytest.approx(expected_norm1, rel=1e-5)
         assert result[1] == pytest.approx(expected_norm2, abs=1e-6)
         assert result[2] == pytest.approx(expected_norm3, rel=1e-5)
+
+
+# ============================================================================
+# Alias Smoke Tests
+# ============================================================================
+
+
+class TestAliasSmokeTests:
+
+    def test_compute_grad_norm_from_optimizer_alias(self, multi_group_optimizer):
+        """Verify compute_grad_norm_from_optimizer is an alias for optimizer_get_grad_norm"""
+        optimizer, params = multi_group_optimizer
+
+        # Set gradients
+        for param in params:
+            param.grad = torch.randn_like(param)
+
+        # Both functions should return identical results
+        result1 = compute_grad_norm_from_optimizer(optimizer)
+        result2 = optimizer_get_grad_norm(optimizer)
+
+        assert result1 == pytest.approx(result2, rel=1e-6)
+
+
+# ============================================================================
+# Gradient Norm Logging Test Suite - tests hook attachment and retrieval together
+# ============================================================================
+
+
+class TestGradientNormLogging:
+
+    def test_setup_and_retrieve_logged_norms(self, single_group_optimizer):
+        """Verify hooks attach and log gradient norms during backward pass"""
+        optimizer, params = single_group_optimizer
+        param = params[0]
+
+        # Setup hooks
+        release_hooks = setup_norm_logging_in_optimizer(optimizer)
+
+        # Create a simple computational graph and run backward
+        loss = (param**2).sum()
+        loss.backward()
+
+        # Get logged norm
+        logged_norm = get_last_grad_norm_from_optimizer(optimizer)
+
+        # Compute expected norm from gradients
+        expected_norm = math.sqrt((param.grad**2).sum().item())
+
+        assert logged_norm == pytest.approx(expected_norm, rel=1e-5)
+
+        # Cleanup
+        release_hooks()
+
+    def test_logging_survives_multiple_backwards(self, single_group_optimizer):
+        """Verify logged norms update on each backward pass"""
+        optimizer, params = single_group_optimizer
+        param = params[0]
+
+        # Setup hooks
+        release_hooks = setup_norm_logging_in_optimizer(optimizer)
+
+        # First backward pass
+        loss1 = (param * 2.0).sum()
+        loss1.backward()
+        norm1 = get_last_grad_norm_from_optimizer(optimizer)
+        expected1 = math.sqrt((param.grad**2).sum().item())
+        assert norm1 == pytest.approx(expected1, rel=1e-5)
+
+        # Second backward pass with different gradients
+        param.grad.zero_()
+        loss2 = (param * 3.0).sum()
+        loss2.backward()
+        norm2 = get_last_grad_norm_from_optimizer(optimizer)
+        expected2 = math.sqrt((param.grad**2).sum().item())
+        assert norm2 == pytest.approx(expected2, rel=1e-5)
+
+        # Norms should be different
+        assert norm1 != pytest.approx(norm2, rel=1e-5)
+
+        # Cleanup
+        release_hooks()
+
+    def test_multiple_setup_calls_idempotent(self, single_group_optimizer):
+        """Verify calling setup twice doesn't break functionality"""
+        optimizer, params = single_group_optimizer
+        param = params[0]
+
+        # Setup hooks twice
+        release_hooks1 = setup_norm_logging_in_optimizer(optimizer)
+        release_hooks2 = setup_norm_logging_in_optimizer(optimizer)
+
+        # Run backward pass
+        loss = (param**2).sum()
+        loss.backward()
+
+        # Should still work correctly
+        logged_norm = get_last_grad_norm_from_optimizer(optimizer)
+        expected_norm = math.sqrt((param.grad**2).sum().item())
+
+        assert logged_norm == pytest.approx(expected_norm, rel=1e-5)
+
+        # Cleanup
+        release_hooks1()
+        release_hooks2()
+
+    def test_cleanup_releases_hooks(self, single_group_optimizer):
+        """Verify cleanup function stops logging new gradients"""
+        optimizer, params = single_group_optimizer
+        param = params[0]
+
+        # Setup hooks and run first backward
+        release_hooks = setup_norm_logging_in_optimizer(optimizer)
+        loss1 = (param * 2.0).sum()
+        loss1.backward()
+        norm1 = get_last_grad_norm_from_optimizer(optimizer)
+
+        # Release hooks
+        release_hooks()
+
+        # Run another backward with different gradients
+        param.grad.zero_()
+        loss2 = (param * 5.0).sum()
+        loss2.backward()
+
+        # Logged norm should be stale (same as norm1), not updated
+        norm2 = get_last_grad_norm_from_optimizer(optimizer)
+        assert norm2 == pytest.approx(norm1, rel=1e-5)
+
+        # The actual gradient is different, proving hooks aren't updating
+        actual_norm = math.sqrt((param.grad**2).sum().item())
+        assert actual_norm != pytest.approx(norm1, rel=1e-5)
+
+    def test_logging_works_across_multiple_groups(self, multi_group_optimizer):
+        """Verify hooks work correctly with multiple parameter groups"""
+        optimizer, params = multi_group_optimizer
+
+        # Setup hooks
+        release_hooks = setup_norm_logging_in_optimizer(optimizer)
+
+        # Create computational graph and run backward
+        loss = sum((p**2).sum() for p in params)
+        loss.backward()
+
+        # Get logged norm
+        logged_norm = get_last_grad_norm_from_optimizer(optimizer)
+
+        # Compute expected norm manually across all groups
+        individual_norms = [math.sqrt((p.grad**2).sum().item()) for p in params]
+        expected_norm = math.sqrt(sum(n**2 for n in individual_norms))
+
+        assert logged_norm == pytest.approx(expected_norm, rel=1e-5)
+
+        # Cleanup
+        release_hooks()

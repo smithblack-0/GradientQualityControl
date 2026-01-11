@@ -1,13 +1,14 @@
 from numbers import Number
-from typing import List, Any, Callable
+from typing import Any, Callable, List
 
 import torch
 from torch.optim import Optimizer
 
 
-def optimizer_get_collection(optimizer: Optimizer,
-                            name: str,
-                            )->List[Any]:
+def optimizer_get_collection(
+    optimizer: Optimizer,
+    name: str,
+) -> List[Any]:
     """
     Gets out of each param group a ordered list of the relevant elements.
     :param optimizer: The optimizer to get the
@@ -20,7 +21,7 @@ def optimizer_get_collection(optimizer: Optimizer,
     return output
 
 
-def multiply_optimizer_gradients(optimizer: Optimizer, num: Number)->None:
+def multiply_optimizer_gradients(optimizer: Optimizer, num: Number) -> None:
     """
     Multiplies all gradients in an optimizer by a number
     :param optimizer:Place to get gradients from
@@ -33,7 +34,7 @@ def multiply_optimizer_gradients(optimizer: Optimizer, num: Number)->None:
                 param.grad *= num
 
 
-def optimizer_get_raw_grad_norms(optimizer: Optimizer)->List[float]:
+def optimizer_get_raw_grad_norms(optimizer: Optimizer) -> List[float]:
     """
     Gets the grad norms for each discrete parameter group
     individually
@@ -50,7 +51,8 @@ def optimizer_get_raw_grad_norms(optimizer: Optimizer)->List[float]:
         norms.append(torch.nn.utils.get_total_norm(grads_cache).item())
     return norms
 
-def optimizer_get_grad_norm(optimizer: Optimizer)->float:
+
+def optimizer_get_grad_norm(optimizer: Optimizer) -> float:
     """
     Gets the gradient norm of the entire param group
     :param optimizer: The optimizer to get the gradient norm from
@@ -79,7 +81,8 @@ def compute_grad_norm_from_optimizer(optimizer: Optimizer) -> float:
     """
     return optimizer_get_grad_norm(optimizer)
 
-def setup_norm_logging_in_optimizer(optimizer: Optimizer)->Callable[[], None]:
+
+def setup_norm_logging_in_optimizer(optimizer: Optimizer) -> Callable[[], None]:
     """
     Attaches a callback hook that will cause parameters to
     end up with the norm of the last gradients that flowed
@@ -94,17 +97,17 @@ def setup_norm_logging_in_optimizer(optimizer: Optimizer)->Callable[[], None]:
     release = []
     parameters = []
     for group in optimizer.param_groups:
-        for p in group['params']:
+        for p in group["params"]:
             parameters.append(p)
-
 
     for parameter in parameters:
         if hasattr(parameter, "_has_norm_logging"):
             continue
 
-        def hook(grad: torch.Tensor, param = parameter):
+        def hook(grad: torch.Tensor, param=parameter):
             param._last_grad_norm = grad.norm()
             return grad
+
         parameter._has_norm_logging = True
 
         release.append(parameter.register_hook(hook))
@@ -115,7 +118,8 @@ def setup_norm_logging_in_optimizer(optimizer: Optimizer)->Callable[[], None]:
 
     return release_hooks
 
-def get_last_grad_norm_from_optimizer(optimizer: Optimizer)->float:
+
+def get_last_grad_norm_from_optimizer(optimizer: Optimizer) -> float:
     """
     Gets the last grad norm that was logged.
     So long as you call this right after
@@ -124,7 +128,7 @@ def get_last_grad_norm_from_optimizer(optimizer: Optimizer)->float:
     """
     norms = []
     for group in optimizer.param_groups:
-        for p in group['params']:
+        for p in group["params"]:
             norms.append(p._last_grad_norm)
     norms = torch.tensor(norms)
     return norms.norm().item()
