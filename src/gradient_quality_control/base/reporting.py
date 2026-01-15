@@ -4,14 +4,17 @@ ReportingSubsystem implementation.
 Generates statistics and vital statistics reports by querying StateManagementSubsystem.
 """
 
-import torch
-from typing import Dict, Any, List, Literal, Union
 from numbers import Number
+from typing import Any, Dict, List, Literal, Union
+
+import torch
 
 from .state_management import StateManagementSubsystem
 
 
-def _to_python_number(value: Union[Number, torch.Tensor],) -> Number:
+def _to_python_number(
+    value: Union[Number, torch.Tensor],
+) -> Number:
     """Convert tensor or Number to Python number."""
     if isinstance(value, torch.Tensor):
         return value.item()
@@ -25,7 +28,10 @@ class ReportingSubsystem:
     Queries StateManagementSubsystem and formats state for reporting.
     """
 
-    def __init__(self, state_manager: StateManagementSubsystem,):
+    def __init__(
+        self,
+        state_manager: StateManagementSubsystem,
+    ):
         """
         Initialize reporting subsystem.
 
@@ -87,7 +93,9 @@ class ReportingSubsystem:
         # Filter based on behavior
         if behavior == "vital":
             # Include only vital and optimizer state
-            state_list = [(name, flag) for name, flag in state_list if flag in ("vital", "optimizer")]
+            state_list = [
+                (name, flag) for name, flag in state_list if flag in ("vital", "optimizer")
+            ]
         # verbose includes everything, no filtering needed
 
         # Process each state entry
@@ -116,7 +124,7 @@ class ReportingSubsystem:
                 elif isinstance(value, Number):
                     result[name] = value
                 # Handle strings - only for vital/optional state, not optimizer params
-                elif isinstance(value, str) and flag in ('vital', 'optional'):
+                elif isinstance(value, str) and flag in ("vital", "optional"):
                     result[name] = value
                 # All other types (None, objects, etc.) are omitted
             except Exception:

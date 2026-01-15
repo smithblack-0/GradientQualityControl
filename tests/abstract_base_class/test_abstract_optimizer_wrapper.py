@@ -16,19 +16,20 @@ Test organization:
 - Distributed synchronization integration tests
 - Device property
 """
-import pytest
+
+import json
+import os
+import random
 import sys
+import tempfile
+from pathlib import Path
+
+import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import tempfile
-import os
-import random
-import json
-from pathlib import Path
 
 from src.gradient_quality_control.base.abstract_optimizer_wrapper import AbstractOptimizerWrapper
-
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -64,13 +65,13 @@ def create_simple_optimizer():
 
 def distributed_worker(rank, world_size, distributed_mode, output_dir, master_addr, master_port):
     """Worker function for distributed testing."""
-    os.environ['MASTER_ADDR'] = master_addr
-    os.environ['MASTER_PORT'] = master_port
-    os.environ['RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
+    os.environ["MASTER_ADDR"] = master_addr
+    os.environ["MASTER_PORT"] = master_port
+    os.environ["RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
 
     # Initialize process group
-    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
+    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
 
     try:
         # Create optimizer and wrapper
@@ -102,15 +103,17 @@ def distributed_worker(rank, world_size, distributed_mode, output_dir, master_ad
             return tensor.item()
 
         # Bind metric
-        wrapper._bind_metric('test_metric', metric_reader, replicated_merger, sharded_merger, normal_merger)
+        wrapper._bind_metric(
+            "test_metric", metric_reader, replicated_merger, sharded_merger, normal_merger
+        )
 
         # Get metric (should synchronize across ranks)
-        result = wrapper._get_metric('test_metric')
+        result = wrapper._get_metric("test_metric")
 
         # Save both input and result to file
-        output_file = Path(output_dir) / f'rank_{rank}.json'
-        with open(output_file, 'w') as f:
-            json.dump({'input': input_value, 'result': result}, f)
+        output_file = Path(output_dir) / f"rank_{rank}.json"
+        with open(output_file, "w") as f:
+            json.dump({"input": input_value, "result": result}, f)
 
     finally:
         dist.destroy_process_group()
@@ -145,22 +148,18 @@ class TestConstructor:
         """Constructor accepts distributed_mode parameter."""
         optimizer = create_simple_optimizer()
 
-        wrapper = ConcreteWrapper(optimizer, distributed_mode='replicated')
+        wrapper = ConcreteWrapper(optimizer, distributed_mode="replicated")
 
-        assert wrapper.distributed_mode == 'replicated'
+        assert wrapper.distributed_mode == "replicated"
 
     def test_constructor_accepts_all_parameters(self):
         """Constructor accepts optimizer, max_draws, and distributed_mode."""
         optimizer = create_simple_optimizer()
 
-        wrapper = ConcreteWrapper(
-            optimizer=optimizer,
-            max_draws=16,
-            distributed_mode='sharded'
-        )
+        wrapper = ConcreteWrapper(optimizer=optimizer, max_draws=16, distributed_mode="sharded")
 
         assert wrapper is not None
-        assert wrapper.distributed_mode == 'sharded'
+        assert wrapper.distributed_mode == "sharded"
 
     def test_constructor_validates_optimizer_type(self):
         """Constructor raises TypeError for non-optimizer input."""
@@ -182,7 +181,7 @@ class TestConstructor:
         optimizer = create_simple_optimizer()
 
         with pytest.raises(ValueError):
-            ConcreteWrapper(optimizer, distributed_mode='invalid')
+            ConcreteWrapper(optimizer, distributed_mode="invalid")
 
     def test_constructor_accepts_none_distributed_mode(self):
         """Constructor accepts None as distributed_mode."""
@@ -193,21 +192,23 @@ class TestConstructor:
         assert wrapper.distributed_mode is None
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_constructor_raises_when_distributed_initialized_without_mode(self):
-        """Constructor raises RuntimeError when distributed is initialized but distributed_mode is None."""
+        """Constructor raises RuntimeError when distributed is initialized but distributed_mode is
+        None."""
         optimizer = create_simple_optimizer()
 
         # Initialize distributed process group
-        os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = str(random.randint(29500, 29600))
-        os.environ['RANK'] = '0'
-        os.environ['WORLD_SIZE'] = '1'
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(random.randint(29500, 29600))
+        os.environ["RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
 
-        dist.init_process_group(backend='gloo', rank=0, world_size=1)
+        dist.init_process_group(backend="gloo", rank=0, world_size=1)
 
         try:
-            # Should raise RuntimeError because distributed is initialized but distributed_mode is None
+            # Should raise RuntimeError because distributed is initialized but
+            # distributed_mode is None
             with pytest.raises(RuntimeError, match="(?i).*distributed.*"):
                 ConcreteWrapper(optimizer, distributed_mode=None)
         finally:
@@ -231,7 +232,7 @@ class TestEndToEndFunctionality:
         for i in range(5):
             # Set gradients
             for group in wrapper.param_groups:
-                for param in group['params']:
+                for param in group["params"]:
                     param.grad = torch.ones_like(param)
 
             # Step (our implementation steps every 3 batches)
@@ -255,12 +256,12 @@ class TestEndToEndFunctionality:
         wrapper = ConcreteWrapper(optimizer, max_draws=32)
 
         # Add custom state
-        wrapper._set_state('custom_param', 0.95, 'vital')
+        wrapper._set_state("custom_param", 0.95, "vital")
 
         # Run some steps
         for _ in range(4):
             for group in wrapper.param_groups:
-                for param in group['params']:
+                for param in group["params"]:
                     param.grad = torch.ones_like(param)
             wrapper.step()
 
@@ -270,7 +271,7 @@ class TestEndToEndFunctionality:
         # Create new wrapper and restore
         new_optimizer = create_simple_optimizer()
         new_wrapper = ConcreteWrapper(new_optimizer, max_draws=32)
-        new_wrapper._set_state('custom_param', 0.0, 'vital')  # Initialize with different value
+        new_wrapper._set_state("custom_param", 0.0, "vital")  # Initialize with different value
 
         new_wrapper.load_state_dict(state_dict)
 
@@ -278,19 +279,19 @@ class TestEndToEndFunctionality:
         assert new_wrapper.num_batches == wrapper.num_batches
         assert new_wrapper.num_steps == wrapper.num_steps
         assert new_wrapper.num_draws == wrapper.num_draws
-        assert new_wrapper._get_state('custom_param') == 0.95
+        assert new_wrapper._get_state("custom_param") == 0.95
 
     def test_statistics_reporting(self):
         """Statistics reporting provides complete visibility."""
         optimizer = create_simple_optimizer()
         wrapper = ConcreteWrapper(optimizer)
 
-        wrapper._set_state('threshold', 1.0, 'vital')
-        wrapper._set_state('debug_info', 'test', 'optional')
+        wrapper._set_state("threshold", 1.0, "vital")
+        wrapper._set_state("debug_info", "test", "optional")
 
         # Run a step
         for group in wrapper.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 param.grad = torch.ones_like(param)
 
         wrapper.step()
@@ -298,20 +299,20 @@ class TestEndToEndFunctionality:
         wrapper.step()
 
         # Get statistics
-        verbose_stats = wrapper.statistics(behavior='verbose')
+        verbose_stats = wrapper.statistics(behavior="verbose")
         vital_stats = wrapper.vital_statistics()
 
         # Verbose should include everything
-        assert 'num_batches' in verbose_stats
-        assert 'threshold' in verbose_stats
-        assert 'debug_info' in verbose_stats
-        assert 'lr' in verbose_stats
+        assert "num_batches" in verbose_stats
+        assert "threshold" in verbose_stats
+        assert "debug_info" in verbose_stats
+        assert "lr" in verbose_stats
 
         # Vital should exclude optional
-        assert 'num_batches' in vital_stats
-        assert 'threshold' in vital_stats
-        assert 'debug_info' not in vital_stats
-        assert 'lr' in vital_stats
+        assert "num_batches" in vital_stats
+        assert "threshold" in vital_stats
+        assert "debug_info" not in vital_stats
+        assert "lr" in vital_stats
 
     def test_max_draws_enforcement(self):
         """max_draws bound is enforced during accumulation."""
@@ -321,13 +322,13 @@ class TestEndToEndFunctionality:
         # Accumulate to max
         for _ in range(3):
             for group in wrapper.param_groups:
-                for param in group['params']:
+                for param in group["params"]:
                     param.grad = torch.ones_like(param)
             wrapper.step()
 
         # Fourth attempt should raise
         for group in wrapper.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 param.grad = torch.ones_like(param)
 
         with pytest.raises(RuntimeError):
@@ -354,8 +355,8 @@ class TestEndToEndFunctionality:
         assert isinstance(opt_state_dict, dict)
 
         # Should be able to modify optimizer attributes
-        wrapper.param_groups[0]['lr'] = 0.05
-        assert optimizer.param_groups[0]['lr'] == 0.05
+        wrapper.param_groups[0]["lr"] = 0.05
+        assert optimizer.param_groups[0]["lr"] == 0.05
 
     def test_wrapper_extends_and_schedules_custom_params(self):
         """Wrapper can extend optimizer and schedule custom parameters via ScheduleAnything."""
@@ -365,20 +366,20 @@ class TestEndToEndFunctionality:
         wrapper = ConcreteWrapper(optimizer)
 
         # Extend optimizer with custom parameter via wrapper
-        wrapper._set_state('gradient_clip_threshold', 10.0, 'optimizer')
+        wrapper._set_state("gradient_clip_threshold", 10.0, "optimizer")
 
         # Verify it's in valid_schedule_targets
         targets = wrapper.valid_schedule_targets
-        assert 'gradient_clip_threshold' in targets
+        assert "gradient_clip_threshold" in targets
 
         # Verify it's in param_groups
-        assert optimizer.param_groups[0]['gradient_clip_threshold'] == 10.0
+        assert optimizer.param_groups[0]["gradient_clip_threshold"] == 10.0
 
         # Create a schedule for the custom parameter
         scheduler = tsa.constant_schedule(
             optimizer,
             value=0.5,  # Multiplier: 10.0 * 0.5 = 5.0
-            schedule_target='gradient_clip_threshold'
+            schedule_target="gradient_clip_threshold",
         )
         scheduler = tsa.SynchronousSchedule([scheduler])
 
@@ -386,10 +387,10 @@ class TestEndToEndFunctionality:
         scheduler.step()
 
         # Verify the param_group value changed
-        assert optimizer.param_groups[0]['gradient_clip_threshold'] == 5.0
+        assert optimizer.param_groups[0]["gradient_clip_threshold"] == 5.0
 
         # Verify we can retrieve it through wrapper
-        threshold_values = wrapper._get_state('gradient_clip_threshold')
+        threshold_values = wrapper._get_state("gradient_clip_threshold")
         assert threshold_values == [5.0]
 
 
@@ -417,14 +418,14 @@ class TestSchedulerIntegration:
         wrapper = ConcreteWrapper(optimizer)
 
         # Add custom schedulable parameter
-        wrapper._set_state('threshold', 0.95, 'optimizer')
+        wrapper._set_state("threshold", 0.95, "optimizer")
 
         # Should be in valid_schedule_targets
         targets = wrapper.valid_schedule_targets
-        assert 'threshold' in targets
+        assert "threshold" in targets
 
         # Should be accessible from param_groups
-        assert 'threshold' in wrapper.param_groups[0]
+        assert "threshold" in wrapper.param_groups[0]
 
 
 # =============================================================================
@@ -436,7 +437,7 @@ class TestDistributedSynchronization:
     """Test distributed metric synchronization across multiple processes."""
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_replicated_mode_averages_metrics_across_ranks(self):
         """Replicated mode averages metrics across all ranks and all ranks agree."""
         world_size = 3
@@ -445,20 +446,20 @@ class TestDistributedSynchronization:
             # Spawn workers
             mp.spawn(
                 distributed_worker,
-                args=(world_size, 'replicated', tmpdir, 'localhost', '12355'),
+                args=(world_size, "replicated", tmpdir, "localhost", "12355"),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect results from all ranks
             inputs = []
             results = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    inputs.append(data['input'])
-                    results.append(data['result'])
+                    inputs.append(data["input"])
+                    results.append(data["result"])
 
             # Verify all ranks got the same result (critical!)
             assert all(r == results[0] for r in results), "All ranks must agree on result"
@@ -468,7 +469,7 @@ class TestDistributedSynchronization:
             assert abs(results[0] - expected) < 1e-6, f"Expected {expected}, got {results[0]}"
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_sharded_mode_sums_metrics_across_ranks(self):
         """Sharded mode sums metrics across all ranks and all ranks agree."""
         world_size = 3
@@ -477,20 +478,20 @@ class TestDistributedSynchronization:
             # Spawn workers
             mp.spawn(
                 distributed_worker,
-                args=(world_size, 'sharded', tmpdir, 'localhost', '12356'),
+                args=(world_size, "sharded", tmpdir, "localhost", "12356"),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect results from all ranks
             inputs = []
             results = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    inputs.append(data['input'])
-                    results.append(data['result'])
+                    inputs.append(data["input"])
+                    results.append(data["result"])
 
             # Verify all ranks got the same result (critical!)
             assert all(r == results[0] for r in results), "All ranks must agree on result"
@@ -500,7 +501,7 @@ class TestDistributedSynchronization:
             assert abs(results[0] - expected) < 1e-6, f"Expected {expected}, got {results[0]}"
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_different_ranks_produce_consensus(self):
         """Different input values from each rank still produce consensus result."""
         world_size = 4
@@ -509,18 +510,18 @@ class TestDistributedSynchronization:
             # Spawn workers
             mp.spawn(
                 distributed_worker,
-                args=(world_size, 'replicated', tmpdir, 'localhost', '12357'),
+                args=(world_size, "replicated", tmpdir, "localhost", "12357"),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect results from all ranks
             results = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    results.append(data['result'])
+                    results.append(data["result"])
 
             # All ranks must agree
             assert all(r == results[0] for r in results), "Consensus failed across ranks"
@@ -550,7 +551,7 @@ class TestDeviceProperty:
 
         device = wrapper.device
 
-        assert device.type == 'cpu'  # Should start on CPU
+        assert device.type == "cpu"  # Should start on CPU
 
 
 if __name__ == "__main__":

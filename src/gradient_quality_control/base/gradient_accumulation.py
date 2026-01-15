@@ -4,11 +4,12 @@ GradientAccumulationStepSubsystem implementation.
 Manages gradient accumulation mechanics and optimizer stepping.
 """
 
-import torch
 from typing import Optional
 
-from .state_management import StateManagementSubsystem
+import torch
+
 from ..optimizer_utils import compute_grad_norm_from_optimizer
+from .state_management import StateManagementSubsystem
 
 
 class GradientAccumulationStepSubsystem:
@@ -34,7 +35,8 @@ class GradientAccumulationStepSubsystem:
             max_draws: Maximum batches allowed to accumulate before forced step
 
         Post-conditions:
-            - Initializes vital state: num_batches=0, num_steps=0, last_num_draws=None, last_grad_norm=None
+            - Initializes vital state: num_batches=0, num_steps=0, last_num_draws=None,
+              last_grad_norm=None
             - Initializes optional state: num_draws=0
         """
         self._state_manager = state_manager
@@ -42,41 +44,41 @@ class GradientAccumulationStepSubsystem:
         self._max_draws = max_draws
 
         # Initialize state
-        state_manager.set_state('num_batches', 0, 'vital')
-        state_manager.set_state('num_steps', 0, 'vital')
-        state_manager.set_state('last_num_draws', None, 'vital')
-        state_manager.set_state('last_grad_norm', None, 'vital')
-        state_manager.set_state('num_draws', 0, 'optional')
+        state_manager.set_state("num_batches", 0, "vital")
+        state_manager.set_state("num_steps", 0, "vital")
+        state_manager.set_state("last_num_draws", None, "vital")
+        state_manager.set_state("last_grad_norm", None, "vital")
+        state_manager.set_state("num_draws", 0, "optional")
 
     @property
     def num_batches(self) -> int:
         """Total batches processed since creation."""
-        return self._state_manager.get_state('num_batches')
+        return self._state_manager.get_state("num_batches")
 
     @property
     def num_steps(self) -> int:
         """Total optimizer steps taken."""
-        return self._state_manager.get_state('num_steps')
+        return self._state_manager.get_state("num_steps")
 
     @property
     def num_draws(self) -> int:
         """Batches accumulated since last step."""
-        return self._state_manager.get_state('num_draws')
+        return self._state_manager.get_state("num_draws")
 
     @property
-    def max_draws(self)->int:
+    def max_draws(self) -> int:
         """maximum allowed draws"""
         return self._max_draws
 
     @property
     def last_num_draws(self) -> Optional[int]:
         """Batch count from most recent step. None before first step."""
-        return self._state_manager.get_state('last_num_draws')
+        return self._state_manager.get_state("last_num_draws")
 
     @property
     def last_grad_norm(self) -> Optional[float]:
         """Gradient norm from most recent step. None before first step."""
-        return self._state_manager.get_state('last_grad_norm')
+        return self._state_manager.get_state("last_grad_norm")
 
     def batch_received(self) -> None:
         """
@@ -87,18 +89,19 @@ class GradientAccumulationStepSubsystem:
         Raises:
             RuntimeError: If num_draws >= max_draws
         """
-        current_draws = self._state_manager.get_state('num_draws')
+        current_draws = self._state_manager.get_state("num_draws")
 
         # Check accumulation bound
         if current_draws >= self._max_draws:
             raise RuntimeError(
-                f"Maximum accumulation exceeded: num_draws={current_draws} >= max_draws={self._max_draws}"
+                f"Maximum accumulation exceeded: num_draws={current_draws} >= "
+                f"max_draws={self._max_draws}"
             )
 
         # Increment counters
-        current_batches = self._state_manager.get_state('num_batches')
-        self._state_manager.set_state('num_batches', current_batches + 1, 'vital')
-        self._state_manager.set_state('num_draws', current_draws + 1, 'optional')
+        current_batches = self._state_manager.get_state("num_batches")
+        self._state_manager.set_state("num_batches", current_batches + 1, "vital")
+        self._state_manager.set_state("num_draws", current_draws + 1, "optional")
 
     def take_optimizer_step(self) -> None:
         """
@@ -109,7 +112,7 @@ class GradientAccumulationStepSubsystem:
         Raises:
             RuntimeError: If num_draws == 0 (cannot step without batches)
         """
-        current_draws = self._state_manager.get_state('num_draws')
+        current_draws = self._state_manager.get_state("num_draws")
 
         # Check that we have batches to step
         if current_draws == 0:
@@ -117,7 +120,7 @@ class GradientAccumulationStepSubsystem:
 
         # Average gradients: divide by num_draws
         for group in self._optimizer.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 if param.grad is not None:
                     param.grad.div_(current_draws)
 
@@ -131,8 +134,8 @@ class GradientAccumulationStepSubsystem:
         self._optimizer.zero_grad()
 
         # Update state
-        current_steps = self._state_manager.get_state('num_steps')
-        self._state_manager.set_state('last_num_draws', current_draws, 'vital')
-        self._state_manager.set_state('last_grad_norm', grad_norm, 'vital')
-        self._state_manager.set_state('num_steps', current_steps + 1, 'vital')
-        self._state_manager.set_state('num_draws', 0, 'optional')
+        current_steps = self._state_manager.get_state("num_steps")
+        self._state_manager.set_state("last_num_draws", current_draws, "vital")
+        self._state_manager.set_state("last_grad_norm", grad_norm, "vital")
+        self._state_manager.set_state("num_steps", current_steps + 1, "vital")
+        self._state_manager.set_state("num_draws", 0, "optional")

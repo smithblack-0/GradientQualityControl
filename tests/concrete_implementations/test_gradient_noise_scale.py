@@ -24,15 +24,16 @@ from pathlib import Path
 import pytest
 import torch
 import torch.multiprocessing as mp
-
-from src.gradient_quality_control.implementations.gradient_noise_scale import OptimizerWrapperGNS
-from src.gradient_quality_control.implementations.gradient_noise_scale import (
-    make_gns_with_cosine_annealing_schedule,
-    make_gns_default,
-)
 import torch_schedule_anything as tsa
 
+from src.gradient_quality_control.implementations.gradient_noise_scale import (
+    OptimizerWrapperGNS,
+    make_gns_default,
+    make_gns_with_cosine_annealing_schedule,
+)
+
 # Helper Functions
+
 
 def create_simple_optimizer():
     """Returns AdamW optimizer with test parameters."""
@@ -53,8 +54,9 @@ def mock_apply_gradients(optimizer_wrapper, value):
     directly sets what the hook would have set.
     """
     for group in optimizer_wrapper.optimizer.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             param._last_grad_norm = torch.tensor(value)
+
 
 def compute_expected_gns(grad_norms):
     """
@@ -79,13 +81,13 @@ def compute_expected_gns(grad_norms):
         return None, None, None, None
 
     mean = sum(grad_norms) / len(grad_norms)
-    squared_norms = [x ** 2 for x in grad_norms]
+    squared_norms = [x**2 for x in grad_norms]
     mean_sq = sum(squared_norms) / len(squared_norms)
 
     var = sum((x - mean) ** 2 for x in grad_norms) / len(grad_norms)
 
     if mean_sq == 0:
-        gns = float('inf')  # Division by zero case
+        gns = float("inf")  # Division by zero case
     else:
         gns = var / mean_sq
 
@@ -93,6 +95,7 @@ def compute_expected_gns(grad_norms):
 
 
 # Constructor Test Suite - tests that constructor accepts parameters correctly
+
 
 class TestConstructor:
     """Constructor Test Suite - validates constructor parameter handling."""
@@ -112,25 +115,23 @@ class TestConstructor:
     def test_constructor_accepts_distributed_mode_replicated(self):
         """Accepts distributed_mode='replicated'."""
         optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperGNS(optimizer, distributed_mode='replicated')
-        assert optimizer_wrapper.distributed_mode == 'replicated'
+        optimizer_wrapper = OptimizerWrapperGNS(optimizer, distributed_mode="replicated")
+        assert optimizer_wrapper.distributed_mode == "replicated"
 
     def test_constructor_accepts_distributed_mode_sharded(self):
         """Accepts distributed_mode='sharded'."""
         optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperGNS(optimizer, distributed_mode='sharded')
-        assert optimizer_wrapper.distributed_mode == 'sharded'
+        optimizer_wrapper = OptimizerWrapperGNS(optimizer, distributed_mode="sharded")
+        assert optimizer_wrapper.distributed_mode == "sharded"
 
     def test_constructor_accepts_all_parameters(self):
         """All parameters together."""
         optimizer = create_simple_optimizer()
         optimizer_wrapper = OptimizerWrapperGNS(
-            optimizer,
-            max_batch_draws=16,
-            distributed_mode='replicated'
+            optimizer, max_batch_draws=16, distributed_mode="replicated"
         )
         assert optimizer_wrapper.optimizer is optimizer
-        assert optimizer_wrapper.distributed_mode == 'replicated'
+        assert optimizer_wrapper.distributed_mode == "replicated"
 
     def test_constructor_validates_optimizer_type(self):
         """Raises TypeError for non-optimizer."""
@@ -141,10 +142,11 @@ class TestConstructor:
         """Raises ValueError for invalid distributed_mode."""
         optimizer = create_simple_optimizer()
         with pytest.raises(ValueError):
-            OptimizerWrapperGNS(optimizer, distributed_mode='invalid')
+            OptimizerWrapperGNS(optimizer, distributed_mode="invalid")
 
 
 # Step Algorithm Test Suite - tests GNS stepping logic using formulas to predict behavior
+
 
 class TestStepAlgorithm:
     """
@@ -159,7 +161,7 @@ class TestStepAlgorithm:
         optimizer = create_simple_optimizer()
         optimizer_wrapper = OptimizerWrapperGNS(optimizer)
 
-        schedule = tsa.constant_schedule(optimizer_wrapper, value=1.0, schedule_target='noise_tolerance')
+        tsa.constant_schedule(optimizer_wrapper, value=1.0, schedule_target="noise_tolerance")
 
         mock_apply_gradients(optimizer_wrapper, value=2.0)
 
@@ -175,7 +177,7 @@ class TestStepAlgorithm:
         optimizer = torch.optim.AdamW([param], lr=0.001)
         optimizer_wrapper = OptimizerWrapperGNS(optimizer)
 
-        schedule = tsa.constant_schedule(optimizer_wrapper, value=1.0, schedule_target='noise_tolerance')
+        tsa.constant_schedule(optimizer_wrapper, value=1.0, schedule_target="noise_tolerance")
 
         # Prediction: First step will never go, second step has same value as first (variance zero)
         mock_apply_gradients(optimizer_wrapper, 2.0)
@@ -192,7 +194,7 @@ class TestStepAlgorithm:
         optimizer = torch.optim.AdamW([param], lr=0.001)
         optimizer_wrapper = OptimizerWrapperGNS(optimizer)
 
-        schedule = tsa.constant_schedule(optimizer_wrapper, value=0.0045, schedule_target='noise_tolerance')
+        tsa.constant_schedule(optimizer_wrapper, value=0.0045, schedule_target="noise_tolerance")
 
         # Prediction using formula:
         # Step 1: gradient norm [2.0] - no step, need 2+ samples
@@ -214,7 +216,9 @@ class TestStepAlgorithm:
         assert stepped is True
         assert optimizer_wrapper.num_steps == 1
 
+
 # Schedule Target Exposure Test Suite - verifies GNS-specific schedule target is exposed
+
 
 class TestScheduleTargetExposure:
     """
@@ -227,10 +231,11 @@ class TestScheduleTargetExposure:
         """Verify noise_tolerance in valid_schedule_targets."""
         optimizer = create_simple_optimizer()
         optimizer_wrapper = OptimizerWrapperGNS(optimizer)
-        assert 'noise_tolerance' in optimizer_wrapper.valid_schedule_targets
+        assert "noise_tolerance" in optimizer_wrapper.valid_schedule_targets
 
 
 # Parameter Group Aggregation Test Suite - tests MIN aggregation across parameter groups
+
 
 class TestParameterGroupAggregation:
     """
@@ -244,15 +249,14 @@ class TestParameterGroupAggregation:
         # Setup: 2 param groups with tolerances 0.0 and 100000.0
         param1 = torch.nn.Parameter(torch.randn(5, 5))
         param2 = torch.nn.Parameter(torch.randn(5, 5))
-        optimizer = torch.optim.AdamW([
-            {'params': [param1], 'lr': 0.001},
-            {'params': [param2], 'lr': 0.001}
-        ])
+        optimizer = torch.optim.AdamW(
+            [{"params": [param1], "lr": 0.001}, {"params": [param2], "lr": 0.001}]
+        )
         optimizer_wrapper = OptimizerWrapperGNS(optimizer)
 
         # Set extreme tolerances: 0.0 and 100000.0
-        optimizer.param_groups[0]['noise_tolerance'] = 0.0
-        optimizer.param_groups[1]['noise_tolerance'] = 100000.0
+        optimizer.param_groups[0]["noise_tolerance"] = 0.0
+        optimizer.param_groups[1]["noise_tolerance"] = 100000.0
 
         # Apply moderate variance gradients that would:
         #   - NEVER step with tolerance=0.0 (impossible threshold)
@@ -276,6 +280,7 @@ class TestParameterGroupAggregation:
 
 # Factory Test Suite: make_gns_with_cosine_annealing_schedule
 
+
 class TestFactoryGNSWithCosineAnnealing:
     """
     Factory Test Suite for make_gns_with_cosine_annealing_schedule.
@@ -291,12 +296,12 @@ class TestFactoryGNSWithCosineAnnealing:
             initial_tolerance=0.5,
             final_tolerance=0.1,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         assert isinstance(optimizer_wrapper, OptimizerWrapperGNS)
-        assert hasattr(scheduler, 'step')
-        assert hasattr(scheduler, 'get_last_lr')
+        assert hasattr(scheduler, "step")
+        assert hasattr(scheduler, "get_last_lr")
 
     def test_learning_rate_schedule(self):
         """Verify LR follows declared schedule (warmup then cosine anneal)."""
@@ -306,10 +311,8 @@ class TestFactoryGNSWithCosineAnnealing:
             initial_tolerance=0.5,
             final_tolerance=0.1,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
-
-        initial_lr = optimizer.param_groups[0]['lr']
 
         # Step schedule multiple times
         lrs = []
@@ -335,17 +338,17 @@ class TestFactoryGNSWithCosineAnnealing:
             final_tolerance=final_tolerance,
             num_training_steps=100,
             num_warmup_steps=10,
-            warmup_multiplier=warmup_multiplier
+            warmup_multiplier=warmup_multiplier,
         )
 
         # Verify starts at initial_tolerance * warmup_multiplier
-        first_tolerance = scheduler.get_last_schedule('noise_tolerance')[0]
+        first_tolerance = scheduler.get_last_schedule("noise_tolerance")[0]
         assert math.isclose(first_tolerance, initial_tolerance * warmup_multiplier, rel_tol=0.01)
 
         # Step through warmup
         tolerances = []
         for i in range(15):
-            tolerances.append(scheduler.get_last_schedule('noise_tolerance')[0])
+            tolerances.append(scheduler.get_last_schedule("noise_tolerance")[0])
             scheduler.step()
 
         # Comes down to initial_tolerance during warmup (inverse warmup)
@@ -355,6 +358,7 @@ class TestFactoryGNSWithCosineAnnealing:
 
 
 # Factory Test Suite: make_gns_default
+
 
 class TestFactoryGNSDefault:
     """
@@ -367,14 +371,11 @@ class TestFactoryGNSDefault:
         """Returns correct types."""
         optimizer = create_simple_optimizer()
         optimizer_wrapper, scheduler = make_gns_default(
-            optimizer=optimizer,
-            tolerance=0.5,
-            num_training_steps=100,
-            num_warmup_steps=10
+            optimizer=optimizer, tolerance=0.5, num_training_steps=100, num_warmup_steps=10
         )
 
         assert isinstance(optimizer_wrapper, OptimizerWrapperGNS)
-        assert hasattr(scheduler, 'step')
+        assert hasattr(scheduler, "step")
 
     def test_tolerance_schedule(self):
         """Verify tolerance follows declared schedule (inverse warmup then constant)."""
@@ -382,16 +383,13 @@ class TestFactoryGNSDefault:
         tolerance = 0.5
 
         optimizer_wrapper, scheduler = make_gns_default(
-            optimizer=optimizer,
-            tolerance=tolerance,
-            num_training_steps=100,
-            num_warmup_steps=10
+            optimizer=optimizer, tolerance=tolerance, num_training_steps=100, num_warmup_steps=10
         )
 
         # Step through warmup and beyond
         tolerances = []
         for i in range(20):
-            tolerances.append(scheduler.get_last_schedule('noise_tolerance')[0])
+            tolerances.append(scheduler.get_last_schedule("noise_tolerance")[0])
             scheduler.step()
 
         # Inverse warmup: starts high, comes down to tolerance
@@ -403,6 +401,7 @@ class TestFactoryGNSDefault:
 
 
 # Distributed Mode Test Suite - verifies distributed history management
+
 
 def gns_distributed_worker(rank, world_size, config, temp_dir):
     """
@@ -417,28 +416,23 @@ def gns_distributed_worker(rank, world_size, config, temp_dir):
     import torch.distributed as dist
 
     # Initialize process group
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group('gloo', rank=rank, world_size=world_size)
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
     # Create optimizer and wrapper
     param = torch.nn.Parameter(torch.randn(5, 5))
     optimizer = torch.optim.AdamW([param], lr=0.001)
-    optimizer_wrapper = OptimizerWrapperGNS(
-        optimizer,
-        distributed_mode=config['distributed_mode']
-    )
+    optimizer_wrapper = OptimizerWrapperGNS(optimizer, distributed_mode=config["distributed_mode"])
 
     # Set tolerance
-    schedule = tsa.constant_schedule(
-        optimizer_wrapper,
-        value=config['tolerance'],
-        schedule_target='noise_tolerance'
+    tsa.constant_schedule(
+        optimizer_wrapper, value=config["tolerance"], schedule_target="noise_tolerance"
     )
 
     # Apply gradients according to config
     log = []
-    gradient_norms = config['gradient_norms']
+    gradient_norms = config["gradient_norms"]
 
     for norm in gradient_norms:
         # Use mock to set gradient norm directly
@@ -448,16 +442,18 @@ def gns_distributed_worker(rank, world_size, config, temp_dir):
         stepped = optimizer_wrapper.step()
 
         # Log result
-        log.append({
-            'rank': rank,
-            'stepped': stepped,
-            'num_steps': optimizer_wrapper.num_steps,
-            'num_draws': optimizer_wrapper.num_draws
-        })
+        log.append(
+            {
+                "rank": rank,
+                "stepped": stepped,
+                "num_steps": optimizer_wrapper.num_steps,
+                "num_draws": optimizer_wrapper.num_draws,
+            }
+        )
 
     # Write log to file
-    log_file = Path(temp_dir) / f'rank_{rank}.json'
-    with open(log_file, 'w') as f:
+    log_file = Path(temp_dir) / f"rank_{rank}.json"
+    with open(log_file, "w") as f:
         json.dump(log, f)
 
     # Cleanup
@@ -465,7 +461,7 @@ def gns_distributed_worker(rank, world_size, config, temp_dir):
 
 
 @pytest.mark.distributed
-@pytest.mark.skipif(sys.platform == 'win32', reason="Distributed tests not supported on Windows")
+@pytest.mark.skipif(sys.platform == "win32", reason="Distributed tests not supported on Windows")
 class TestDistributedMode:
     """
     Distributed Mode Test Suite - verifies distributed history management.
@@ -490,9 +486,9 @@ class TestDistributedMode:
 
         world_size = 2
         config = {
-            'gradient_norms': [2.0, 3.0],  # Each device applies these norms
-            'tolerance': 0.02,
-            'distributed_mode': 'replicated'
+            "gradient_norms": [2.0, 3.0],  # Each device applies these norms
+            "tolerance": 0.02,
+            "distributed_mode": "replicated",
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -500,30 +496,28 @@ class TestDistributedMode:
                 gns_distributed_worker,
                 args=(world_size, config, temp_dir),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Read logs from all ranks
             logs = []
             for rank in range(world_size):
-                log_file = Path(temp_dir) / f'rank_{rank}.json'
-                with open(log_file, 'r') as f:
+                log_file = Path(temp_dir) / f"rank_{rank}.json"
+                with open(log_file, "r") as f:
                     logs.append(json.load(f))
 
             # Both devices should make same decision (history is shared)
             # After 2nd draw on each device (4 total samples), should step
-            assert logs[0][1]['stepped'] is True
-            assert logs[1][1]['stepped'] is True
+            assert logs[0][1]["stepped"] is True
+            assert logs[1][1]["stepped"] is True
 
             # Compare with non-distributed control to verify distributed steps SOONER
             param = torch.nn.Parameter(torch.randn(2, 2))
             optimizer_control = torch.optim.AdamW([param], lr=0.001)
             optimizer_wrapper_control = OptimizerWrapperGNS(optimizer_control)
 
-            schedule_control = tsa.constant_schedule(
-                optimizer_wrapper_control,
-                value=0.02,
-                schedule_target='noise_tolerance'
+            tsa.constant_schedule(
+                optimizer_wrapper_control, value=0.02, schedule_target="noise_tolerance"
             )
 
             # Apply same gradient norms as distributed test
@@ -553,29 +547,25 @@ class TestDistributedMode:
         #   History contains merged norm 3.162 (NOT local norms 2.0 and 4.0)
 
         world_size = 2
-        config = {
-            'gradient_norms': [2.0, 4.0],
-            'tolerance': 1.0,
-            'distributed_mode': 'sharded'
-        }
+        config = {"gradient_norms": [2.0, 4.0], "tolerance": 1.0, "distributed_mode": "sharded"}
 
         with tempfile.TemporaryDirectory() as temp_dir:
             mp.spawn(
                 gns_distributed_worker,
                 args=(world_size, config, temp_dir),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Read logs
             logs = []
             for rank in range(world_size):
-                log_file = Path(temp_dir) / f'rank_{rank}.json'
-                with open(log_file, 'r') as f:
+                log_file = Path(temp_dir) / f"rank_{rank}.json"
+                with open(log_file, "r") as f:
                     logs.append(json.load(f))
 
             # Both devices should make same stepping decisions (norm merging ensures consistency)
-            assert logs[0][-1]['stepped'] == logs[1][-1]['stepped']
+            assert logs[0][-1]["stepped"] == logs[1][-1]["stepped"]
 
             # Compare with non-distributed control using merged norms
             # Worker applies [2.0, 4.0] on both devices
@@ -586,10 +576,8 @@ class TestDistributedMode:
             optimizer_control = torch.optim.AdamW([param_control], lr=0.001)
             optimizer_wrapper_control = OptimizerWrapperGNS(optimizer_control)
 
-            schedule_control = tsa.constant_schedule(
-                optimizer_wrapper_control,
-                value=1.0,
-                schedule_target='noise_tolerance'
+            tsa.constant_schedule(
+                optimizer_wrapper_control, value=1.0, schedule_target="noise_tolerance"
             )
 
             # Apply merged norms
@@ -604,7 +592,7 @@ class TestDistributedMode:
             # Find when sharded mode stepped
             sharded_steps = 0
             for i, log_entry in enumerate(logs[0]):
-                if log_entry['stepped']:
+                if log_entry["stepped"]:
                     sharded_steps = i + 1
                     break
 
@@ -614,6 +602,7 @@ class TestDistributedMode:
 
 
 # Integration Test Suite - end-to-end training scenarios
+
 
 class TestIntegration:
     """
@@ -632,7 +621,7 @@ class TestIntegration:
             initial_tolerance=0.5,
             final_tolerance=0.1,
             num_training_steps=50,
-            num_warmup_steps=5
+            num_warmup_steps=5,
         )
 
         # Run training loop
@@ -645,7 +634,7 @@ class TestIntegration:
             loss.backward()
 
             # Step wrapper
-            stepped = optimizer_wrapper.step()
+            optimizer_wrapper.step()
 
             # Step scheduler every iteration (not conditional on stepped)
             scheduler.step()
@@ -661,7 +650,7 @@ class TestIntegration:
         optimizer = torch.optim.AdamW([param], lr=0.001)
         optimizer_wrapper = OptimizerWrapperGNS(optimizer)
 
-        schedule = tsa.constant_schedule(optimizer_wrapper, value=1.0, schedule_target='noise_tolerance')
+        tsa.constant_schedule(optimizer_wrapper, value=1.0, schedule_target="noise_tolerance")
 
         # Apply gradients until first step (zero variance will step)
         values = [2.0, 2.0, 2.0]
@@ -690,4 +679,3 @@ class TestIntegration:
         assert stepped is True
         # Should have 2 steps total (1 from saved state + 1 new)
         assert optimizer_wrapper2.num_steps == 3
-

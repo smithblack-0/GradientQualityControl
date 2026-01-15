@@ -16,13 +16,16 @@ Test organization:
 - take_optimizer_step() gradient averaging and counter updates
 - Error conditions and invariants
 """
-import pytest
-import torch
+
 from typing import List
 
-from src.gradient_quality_control.base.state_management import StateManagementSubsystem
-from src.gradient_quality_control.base.gradient_accumulation import GradientAccumulationStepSubsystem
+import pytest
+import torch
 
+from src.gradient_quality_control.base.gradient_accumulation import (
+    GradientAccumulationStepSubsystem,
+)
+from src.gradient_quality_control.base.state_management import StateManagementSubsystem
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -31,6 +34,7 @@ from src.gradient_quality_control.base.gradient_accumulation import GradientAccu
 
 class NoOpOptimizer(torch.optim.Optimizer):
     """Used to examine gradients."""
+
     def __init__(self, params, defaults=None):
         super().__init__(params, defaults or {})
 
@@ -43,7 +47,6 @@ class NoOpOptimizer(torch.optim.Optimizer):
         return None
 
 
-
 def create_simple_optimizer(num_params=3):
     """Create a simple SGD optimizer with parameters."""
     params = [torch.nn.Parameter(torch.randn(10, 10)) for _ in range(num_params)]
@@ -53,37 +56,38 @@ def create_simple_optimizer(num_params=3):
 def set_gradients(optimizer, value=1.0):
     """Set gradients on all parameters to a specific value."""
     for group in optimizer.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             param.grad = torch.full_like(param, value)
+
 
 def add_gradients(optimizer, value=1.0):
     """Set gradients on all parameters to a specific value."""
     for group in optimizer.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             if param.grad is not None:
                 param.grad += value
+
 
 def check_gradients_zeroed(optimizer):
     """Check if all gradients are None or zero."""
     for group in optimizer.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             if param.grad is not None and param.grad.abs().sum() > 0:
                 return False
     return True
 
+
 def create_no_op_optimizer():
     """Creates a no op optimizer that does nothing"""
-    params = [
-        torch.nn.Parameter(torch.randn([10, 5]))
-        for _ in range(10)
-    ]
+    params = [torch.nn.Parameter(torch.randn([10, 5])) for _ in range(10)]
     return NoOpOptimizer(params)
 
-def get_optimizer_gradients(optimizer)->List[torch.Tensor]:
+
+def get_optimizer_gradients(optimizer) -> List[torch.Tensor]:
     """Gets a list of all optimizer gradients in order"""
     output = []
     for group in optimizer.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             if param.grad is not None:
                 output.append(param.grad.clone())
     return output
@@ -103,9 +107,7 @@ class TestConstructor:
         state_mgr = StateManagementSubsystem(optimizer)
 
         subsystem = GradientAccumulationStepSubsystem(
-            state_manager=state_mgr,
-            optimizer=optimizer,
-            max_draws=32
+            state_manager=state_mgr, optimizer=optimizer, max_draws=32
         )
 
         assert subsystem is not None
@@ -124,7 +126,6 @@ class TestConstructor:
         assert subsystem.last_num_draws is None
         assert subsystem.last_grad_norm is None
 
-
     def test_constructor_uses_default_max_draws(self):
         """Constructor accepts max_draws with default value."""
         optimizer = create_simple_optimizer()
@@ -142,11 +143,11 @@ class TestConstructor:
         GradientAccumulationStepSubsystem(state_mgr, optimizer, max_draws=64)
 
         # Verify state exists in state manager
-        assert state_mgr.get_state('num_batches') == 0
-        assert state_mgr.get_state('num_steps') == 0
-        assert state_mgr.get_state('num_draws') == 0
-        assert state_mgr.get_state('last_num_draws') is None
-        assert state_mgr.get_state('last_grad_norm') is None
+        assert state_mgr.get_state("num_batches") == 0
+        assert state_mgr.get_state("num_steps") == 0
+        assert state_mgr.get_state("num_draws") == 0
+        assert state_mgr.get_state("last_num_draws") is None
+        assert state_mgr.get_state("last_grad_norm") is None
 
     def test_constructor_state_correctly_marked_for_reporting(self):
         """Test the right reporting flags ended up on the things"""
@@ -155,9 +156,9 @@ class TestConstructor:
         GradientAccumulationStepSubsystem(state_mgr, optimizer, max_draws=64)
 
         for key, flavor in state_mgr.show_state():
-            if "num_batches" in key :
+            if "num_batches" in key:
                 assert flavor == "vital"
-            if "num_steps" in key :
+            if "num_steps" in key:
                 assert flavor == "vital"
             if "num_draws" in key and "last" not in key:
                 assert flavor == "optional"
@@ -165,7 +166,6 @@ class TestConstructor:
                 assert flavor == "vital"
             if "last_grad_norm" in key:
                 assert flavor == "vital"
-
 
 
 # =============================================================================
@@ -223,6 +223,7 @@ class TestProperties:
 
         assert hasattr(subsystem, "last_grad_norm")
         assert subsystem.last_grad_norm is None
+
 
 # =============================================================================
 # Batch Received Test Suite - tests that batch_received updates counters correctly
@@ -297,7 +298,8 @@ class TestBatchReceived:
 
 
 # =============================================================================
-# Take Optimizer Step Test Suite - tests that take_optimizer_step handles gradient averaging and counter updates correctly
+# Take Optimizer Step Test Suite - tests that take_optimizer_step handles gradient averaging
+# and counter updates correctly
 # =============================================================================
 
 
@@ -318,7 +320,7 @@ class TestTakeOptimizerStep:
             subsystem.batch_received()
 
         for gradient in get_optimizer_gradients(optimizer):
-            assert torch.allclose(gradient, torch.tensor(8.0)) # 2.0*4
+            assert torch.allclose(gradient, torch.tensor(8.0))  # 2.0*4
 
         # Take the optimizer step. Should average by the number of
         # draws.

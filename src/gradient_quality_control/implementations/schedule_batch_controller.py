@@ -5,7 +5,7 @@ Steps optimizer when accumulated batch size meets or exceeds a scheduled logical
 Enables dynamic batch size scheduling without code changes.
 """
 
-from typing import Optional, Literal, Tuple
+from typing import Literal, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -16,7 +16,8 @@ from ..base.abstract_optimizer_wrapper import AbstractOptimizerWrapper
 
 class OptimizerWrapperSBC(AbstractOptimizerWrapper):
     """
-    Scheduled Batch Controller - dynamically controls effective batch size through gradient accumulation.
+    Scheduled Batch Controller - dynamically controls effective batch size through gradient
+    accumulation.
 
     Steps the optimizer when the accumulated batch size (num_draws * physical_batch_size)
     meets or exceeds a scheduled logical_batch_size target. This enables dynamic batch size
@@ -53,7 +54,7 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
     """
 
     @staticmethod
-    def merge_replicated_batch_sizes(batch_size: int)->int:
+    def merge_replicated_batch_sizes(batch_size: int) -> int:
         """Sum batch sizes across replicated devices using all_reduce."""
         batch_size_tensor = torch.tensor([float(batch_size)])
         dist.all_reduce(batch_size_tensor, op=dist.ReduceOp.SUM)
@@ -64,7 +65,7 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         optimizer: torch.optim.Optimizer,
         physical_batch_size: int,
         max_batch_draws: int = 64,
-        distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+        distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
     ):
         """
         Initialize Scheduled Batch Controller optimizer.
@@ -73,8 +74,8 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
             optimizer: Base PyTorch optimizer
             physical_batch_size: Size of each microbatch processed per step() call
             max_batch_draws: Maximum gradient accumulation steps before forcing optimizer step
-            distributed_mode: 'replicated' for DDP (sum batch sizes), 'sharded' for FSDP (passthrough),
-                            None for single-device training
+            distributed_mode: 'replicated' for DDP (sum batch sizes), 'sharded' for FSDP
+                            (passthrough), None for single-device training
 
         Raises:
             ValueError: If physical_batch_size <= 0
@@ -87,19 +88,20 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
             raise ValueError("max_batch_draws must be positive")
         if distributed_mode not in ("replicated", "sharded") and distributed_mode is not None:
             raise ValueError("distributed_mode can only be 'replicated' or 'sharded', or None")
-        super().__init__(optimizer, max_draws = max_batch_draws, distributed_mode=distributed_mode)
+        super().__init__(optimizer, max_draws=max_batch_draws, distributed_mode=distributed_mode)
 
         # Storage of ideal batch size, and binding of metric management
         # Metric system will combine detected physical batch size across all devices
         # as relevant. Replicated cases add up all the batches across all devices,
         # while other cases are just one big batch.
         self._set_state("physical_batch_size", physical_batch_size, "optional")
-        self._bind_metric("effective_batch_size",
-                          metric_reader = lambda : self._get_state("physical_batch_size"),
-                          replicated_merger = self.merge_replicated_batch_sizes,
-                          sharded_merger = lambda x : x,
-                          normal_merger = lambda x : x,
-                          )
+        self._bind_metric(
+            "effective_batch_size",
+            metric_reader=lambda: self._get_state("physical_batch_size"),
+            replicated_merger=self.merge_replicated_batch_sizes,
+            sharded_merger=lambda x: x,
+            normal_merger=lambda x: x,
+        )
 
         # Setup the scheduling target.
 
@@ -119,7 +121,10 @@ class OptimizerWrapperSBC(AbstractOptimizerWrapper):
         self._batch_received()
         logical_batch_size_target = self._get_state("logical_batch_size", aggregate_behavior="max")
         effective_batch_size = self._get_metric("effective_batch_size")
-        if self.num_draws*effective_batch_size >= logical_batch_size_target or self.max_draws <= self.num_draws:
+        if (
+            self.num_draws * effective_batch_size >= logical_batch_size_target
+            or self.max_draws <= self.num_draws
+        ):
             self._take_optimizer_step()
             return True
         return False
@@ -134,7 +139,7 @@ def make_sbc_with_polynomial_schedule(
     num_warmup_steps: int,
     polynomial_power: float = 2.0,
     max_batch_draws: int = 64,
-    distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperSBC, tsa.SynchronousSchedule]:
     """
     Factory for SBC with polynomial batch schedule and constant LR.
@@ -160,16 +165,24 @@ def make_sbc_with_polynomial_schedule(
     """
 
     # Make the new optimizer itself.
-    optimizer = OptimizerWrapperSBC(optimizer, physical_batch_size, max_batch_draws,  distributed_mode)
+    optimizer = OptimizerWrapperSBC(
+        optimizer, physical_batch_size, max_batch_draws, distributed_mode
+    )
 
     # Bind schedule, make composite schedule. Keep in mind we are setting relative multipliers.
     lr_schedule = tsa.constant_with_warmup(optimizer, 1.0, num_warmup_steps, schedule_target="lr")
-    wd_schedule = tsa.cosine_annealing_with_warmup(optimizer, 1.0, 0.0, num_warmup_steps,
-                                                   num_training_steps, schedule_target="weight_decay")
-    batch_schedule = tsa.polynomial_schedule_with_warmup(optimizer, initial_batch_size, final_batch_size,
-                                                         num_warmup_steps, num_training_steps,
-                                                         polynomial_exponent=polynomial_power,
-                                                         schedule_target="logical_batch_size")
+    wd_schedule = tsa.cosine_annealing_with_warmup(
+        optimizer, 1.0, 0.0, num_warmup_steps, num_training_steps, schedule_target="weight_decay"
+    )
+    batch_schedule = tsa.polynomial_schedule_with_warmup(
+        optimizer,
+        initial_batch_size,
+        final_batch_size,
+        num_warmup_steps,
+        num_training_steps,
+        polynomial_exponent=polynomial_power,
+        schedule_target="logical_batch_size",
+    )
     schedule = tsa.SynchronousSchedule([lr_schedule, wd_schedule, batch_schedule])
 
     # Return the resulting scheduler and optimizer.
@@ -186,7 +199,7 @@ def make_sbc_with_polynomial_schedule_conventional_lr(
     num_warmup_steps: int,
     polynomial_power: float = 2.0,
     max_batch_draws: int = 64,
-    distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+    distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
 ) -> Tuple[OptimizerWrapperSBC, tsa.SynchronousSchedule]:
     """
     Factory for SBC with polynomial batch schedule and annealing LR.
@@ -211,16 +224,24 @@ def make_sbc_with_polynomial_schedule_conventional_lr(
         Tuple of (optimizer, synchronous_schedule)
     """
     # Make the new optimizer itself.
-    optimizer = OptimizerWrapperSBC(optimizer, physical_batch_size, max_batch_draws, distributed_mode)
+    optimizer = OptimizerWrapperSBC(
+        optimizer, physical_batch_size, max_batch_draws, distributed_mode
+    )
 
     # Bind schedule, make composite schedule. Keep in mind we are setting relative multipliers.
-    lr_schedule = tsa.cosine_annealing_with_warmup(optimizer, 1.0, 0.0, num_warmup_steps,
-                                                   num_training_steps, schedule_target="lr")
+    lr_schedule = tsa.cosine_annealing_with_warmup(
+        optimizer, 1.0, 0.0, num_warmup_steps, num_training_steps, schedule_target="lr"
+    )
     wd_schedule = tsa.constant_schedule(optimizer, 1.0, "weight_decay")
-    batch_schedule = tsa.polynomial_schedule_with_warmup(optimizer, initial_batch_size, final_batch_size,
-                                                         num_warmup_steps, num_training_steps,
-                                                         polynomial_exponent=polynomial_power,
-                                                         schedule_target="logical_batch_size")
+    batch_schedule = tsa.polynomial_schedule_with_warmup(
+        optimizer,
+        initial_batch_size,
+        final_batch_size,
+        num_warmup_steps,
+        num_training_steps,
+        polynomial_exponent=polynomial_power,
+        schedule_target="logical_batch_size",
+    )
     schedule = tsa.SynchronousSchedule([lr_schedule, wd_schedule, batch_schedule])
 
     # Return the resulting scheduler and optimizer.

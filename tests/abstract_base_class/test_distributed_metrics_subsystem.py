@@ -17,11 +17,14 @@ Test organization:
 
 Most distributed testing itself is handled in distributed metrics subsystem.
 """
-import pytest
+
 from typing import Any
 
-from src.gradient_quality_control.base.distributed_metrics import DistributedMetricsManagementSubsystem
+import pytest
 
+from src.gradient_quality_control.base.distributed_metrics import (
+    DistributedMetricsManagementSubsystem,
+)
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -33,14 +36,14 @@ def create_spy_callable(return_value=42):
     call_log = []
 
     def spy(*args, **kwargs):
-        call_log.append({'args': args, 'kwargs': kwargs})
+        call_log.append({"args": args, "kwargs": kwargs})
         return return_value
 
     spy.call_log = call_log
     spy.was_called = lambda: len(call_log) > 0
     spy.call_count = lambda: len(call_log)
-    spy.last_call_args = lambda: call_log[-1]['args'] if call_log else None
-    spy.last_call_kwargs = lambda: call_log[-1]['kwargs'] if call_log else None
+    spy.last_call_args = lambda: call_log[-1]["args"] if call_log else None
+    spy.last_call_kwargs = lambda: call_log[-1]["kwargs"] if call_log else None
 
     return spy
 
@@ -68,8 +71,10 @@ def create_merger(multiplier=1.0):
 
 def create_failing_callable(exception_type=RuntimeError, message="Test error"):
     """Create callable that always raises an exception."""
+
     def failing(*args, **kwargs):
         raise exception_type(message)
+
     return failing
 
 
@@ -146,12 +151,15 @@ class TestBindMetricRegistration:
         """bind_metric() allows registering multiple different metrics."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state=None)
 
-        subsystem.bind_metric("metric1", create_metric_reader(), create_merger(),
-                             create_merger(), create_merger())
-        subsystem.bind_metric("metric2", create_metric_reader(), create_merger(),
-                             create_merger(), create_merger())
-        subsystem.bind_metric("metric3", create_metric_reader(), create_merger(),
-                             create_merger(), create_merger())
+        subsystem.bind_metric(
+            "metric1", create_metric_reader(), create_merger(), create_merger(), create_merger()
+        )
+        subsystem.bind_metric(
+            "metric2", create_metric_reader(), create_merger(), create_merger(), create_merger()
+        )
+        subsystem.bind_metric(
+            "metric3", create_metric_reader(), create_merger(), create_merger(), create_merger()
+        )
 
         # All should be retrievable
         subsystem.get_metric("metric1")
@@ -162,13 +170,19 @@ class TestBindMetricRegistration:
         """bind_metric() throws error when name already registered."""
         subsystem = DistributedMetricsManagementSubsystem(distributed_state=None)
 
-        subsystem.bind_metric("duplicate", create_metric_reader(), create_merger(),
-                             create_merger(), create_merger())
+        subsystem.bind_metric(
+            "duplicate", create_metric_reader(), create_merger(), create_merger(), create_merger()
+        )
 
         # Second registration with same name should fail
         with pytest.raises(RuntimeError):
-            subsystem.bind_metric("duplicate", create_metric_reader(), create_merger(),
-                                 create_merger(), create_merger())
+            subsystem.bind_metric(
+                "duplicate",
+                create_metric_reader(),
+                create_merger(),
+                create_merger(),
+                create_merger(),
+            )
 
     def test_bind_metric_validates_callables(self):
         """bind_metric() validates that provided objects are callable."""
@@ -176,8 +190,9 @@ class TestBindMetricRegistration:
 
         # Passing non-callable should fail
         with pytest.raises(TypeError):
-            subsystem.bind_metric("bad_metric", "not_callable", create_merger(),
-                                 create_merger(), create_merger())
+            subsystem.bind_metric(
+                "bad_metric", "not_callable", create_merger(), create_merger(), create_merger()
+            )
 
 
 # =============================================================================
@@ -193,8 +208,7 @@ class TestGetMetricBasicResolution:
         subsystem = DistributedMetricsManagementSubsystem(distributed_state=None)
 
         reader = create_metric_reader(value=99.9)
-        subsystem.bind_metric("test", reader, create_merger(),
-                             create_merger(), create_merger())
+        subsystem.bind_metric("test", reader, create_merger(), create_merger(), create_merger())
 
         subsystem.get_metric("test")
 
@@ -368,7 +382,8 @@ class TestGetMetricArgumentForwarding:
 
 
 # =============================================================================
-# Get Metric Test Suite - tests that get_metric() handles error conditions and provides context-specific error messages
+# Get Metric Test Suite - tests that get_metric() handles error conditions and provides
+# context-specific error messages
 # =============================================================================
 
 

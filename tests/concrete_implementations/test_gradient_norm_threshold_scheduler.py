@@ -16,18 +16,20 @@ Test organization:
 - Distributed mode behaviors
 - Parameter group aggregation
 """
-import pytest
-import sys
-import os
-import math
+
 import json
-import tempfile
+import math
+import os
 import random
+import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 import torch
-import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.nn as nn
 import torch_schedule_anything as tsa
 
 from src.gradient_quality_control.implementations.gradient_norm_threshold_scheduler import (
@@ -35,7 +37,6 @@ from src.gradient_quality_control.implementations.gradient_norm_threshold_schedu
     make_gnts_with_cosine_annealing_schedule,
     make_gnts_with_cosine_annealing_schedule_conventional_lr,
 )
-
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -51,23 +52,25 @@ def create_simple_optimizer():
 def apply_gradients(optimizer_wrapper, scale=1.0):
     """Apply scaled gradients to all parameters."""
     for group in optimizer_wrapper.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             param.grad = torch.ones_like(param) * scale
 
 
-def gnts_distributed_worker(rank, world_size, gradients, threshold, distributed_mode, output_dir, master_addr, master_port):
+def gnts_distributed_worker(
+    rank, world_size, gradients, threshold, distributed_mode, output_dir, master_addr, master_port
+):
     """
     Infrastructure worker for GNTS distributed testing.
 
     Interprets gradient list as: gradients[step] = scalar to apply to all params.
     Logs vital_statistics + stepped after each step.
     """
-    os.environ['MASTER_ADDR'] = master_addr
-    os.environ['MASTER_PORT'] = master_port
-    os.environ['RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
+    os.environ["MASTER_ADDR"] = master_addr
+    os.environ["MASTER_PORT"] = master_port
+    os.environ["RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
 
-    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
+    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
 
     try:
         # Create wrapper
@@ -76,10 +79,8 @@ def gnts_distributed_worker(rank, world_size, gradients, threshold, distributed_
         optimizer_wrapper = OptimizerWrapperGNTS(optimizer, distributed_mode=distributed_mode)
 
         # Bind schedule
-        scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=threshold,
-            schedule_target='gradient_norm_threshold'
+        tsa.constant_schedule(
+            optimizer_wrapper, value=threshold, schedule_target="gradient_norm_threshold"
         )
 
         # Execute steps and log telemetry
@@ -89,14 +90,14 @@ def gnts_distributed_worker(rank, world_size, gradients, threshold, distributed_
             result = optimizer_wrapper.step()
 
             stats = optimizer_wrapper.vital_statistics()
-            stats['stepped'] = result
-            stats['step_number'] = step_num
+            stats["stepped"] = result
+            stats["step_number"] = step_num
             log.append(stats)
 
         # Save log
-        output_file = Path(output_dir) / f'rank_{rank}.json'
-        with open(output_file, 'w') as f:
-            json.dump({'rank': rank, 'log': log}, f)
+        output_file = Path(output_dir) / f"rank_{rank}.json"
+        with open(output_file, "w") as f:
+            json.dump({"rank": rank, "log": log}, f)
 
     finally:
         dist.destroy_process_group()
@@ -123,10 +124,7 @@ class TestConstructor:
         """Constructor accepts max_batch_draws parameter."""
         optimizer = create_simple_optimizer()
 
-        optimizer_wrapper = OptimizerWrapperGNTS(
-            optimizer,
-            max_batch_draws=16
-        )
+        optimizer_wrapper = OptimizerWrapperGNTS(optimizer, max_batch_draws=16)
 
         assert optimizer_wrapper is not None
 
@@ -134,10 +132,7 @@ class TestConstructor:
         """Constructor accepts distributed_mode parameter."""
         optimizer = create_simple_optimizer()
 
-        optimizer_wrapper = OptimizerWrapperGNTS(
-            optimizer,
-            distributed_mode="replicated"
-        )
+        optimizer_wrapper = OptimizerWrapperGNTS(optimizer, distributed_mode="replicated")
 
         assert optimizer_wrapper.distributed_mode == "replicated"
 
@@ -146,9 +141,7 @@ class TestConstructor:
         optimizer = create_simple_optimizer()
 
         optimizer_wrapper = OptimizerWrapperGNTS(
-            optimizer,
-            max_batch_draws=16,
-            distributed_mode="sharded"
+            optimizer, max_batch_draws=16, distributed_mode="sharded"
         )
 
         assert optimizer_wrapper is not None
@@ -165,10 +158,7 @@ class TestConstructor:
         optimizer = create_simple_optimizer()
 
         with pytest.raises(ValueError):
-            OptimizerWrapperGNTS(
-                optimizer,
-                distributed_mode="invalid"
-            )
+            OptimizerWrapperGNTS(optimizer, distributed_mode="invalid")
 
 
 # =============================================================================
@@ -186,11 +176,12 @@ class TestScheduleTargetExposure:
 
         targets = optimizer_wrapper.valid_schedule_targets
 
-        assert 'gradient_norm_threshold' in targets
+        assert "gradient_norm_threshold" in targets
 
 
 # =============================================================================
-# Step Algorithm Test Suite - tests step decision logic based on mean_norm <= gradient_norm_threshold
+# Step Algorithm Test Suite - tests step decision logic based on mean_norm <=
+# gradient_norm_threshold
 # =============================================================================
 
 
@@ -204,11 +195,9 @@ class TestStepAlgorithm:
 
         # Set very high threshold so mean norm is always below
         scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=1000.0,
-            schedule_target='gradient_norm_threshold'
+            optimizer_wrapper, value=1000.0, schedule_target="gradient_norm_threshold"
         )
-        sync = tsa.SynchronousSchedule([scheduler])
+        tsa.SynchronousSchedule([scheduler])
 
         # Apply small gradients - should step immediately
         apply_gradients(optimizer_wrapper, scale=0.01)
@@ -224,11 +213,9 @@ class TestStepAlgorithm:
 
         # Set very low threshold so we need accumulation
         scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.001,
-            schedule_target='gradient_norm_threshold'
+            optimizer_wrapper, value=0.001, schedule_target="gradient_norm_threshold"
         )
-        sync = tsa.SynchronousSchedule([scheduler])
+        tsa.SynchronousSchedule([scheduler])
 
         # Apply gradients at scale=1.0
         # 3 params, each (5,5), all ones
@@ -254,7 +241,7 @@ class TestStepAlgorithm:
             schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
                 opt, lr_lambda=lambda step: 1000.0 if step == 0 else 0.001
             ),
-            schedule_target='gradient_norm_threshold'
+            schedule_target="gradient_norm_threshold",
         )
         sync = tsa.SynchronousSchedule([scheduler])
 
@@ -278,11 +265,9 @@ class TestStepAlgorithm:
 
         # Set impossible threshold (zero)
         scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.0,
-            schedule_target='gradient_norm_threshold'
+            optimizer_wrapper, value=0.0, schedule_target="gradient_norm_threshold"
         )
-        sync = tsa.SynchronousSchedule([scheduler])
+        tsa.SynchronousSchedule([scheduler])
 
         # Accumulate to max
         for i in range(3):
@@ -305,11 +290,9 @@ class TestStepAlgorithm:
 
         # Set threshold
         scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=5.0,
-            schedule_target='gradient_norm_threshold'
+            optimizer_wrapper, value=5.0, schedule_target="gradient_norm_threshold"
         )
-        sync = tsa.SynchronousSchedule([scheduler])
+        tsa.SynchronousSchedule([scheduler])
 
         # Prediction using formulas (step-by-step):
         #   Apply gradients with scale=0.2 → each param has all grads = 0.2
@@ -337,11 +320,9 @@ class TestStepAlgorithm:
 
         # Set low threshold to force accumulation
         scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=2.0,
-            schedule_target='gradient_norm_threshold'
+            optimizer_wrapper, value=2.0, schedule_target="gradient_norm_threshold"
         )
-        sync = tsa.SynchronousSchedule([scheduler])
+        tsa.SynchronousSchedule([scheduler])
 
         # Prediction using formulas (step-by-step):
         #   Apply gradients with scale=1.5 → each param has all grads = 1.5
@@ -368,11 +349,9 @@ class TestStepAlgorithm:
 
         # Set threshold
         scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=3.0,
-            schedule_target='gradient_norm_threshold'
+            optimizer_wrapper, value=3.0, schedule_target="gradient_norm_threshold"
         )
-        sync = tsa.SynchronousSchedule([scheduler])
+        tsa.SynchronousSchedule([scheduler])
 
         # Draw 1 prediction:
         #   Apply scale=2.0 → param norm = sqrt(4 * 2.0^2) = sqrt(16) = 4.0
@@ -407,10 +386,9 @@ class TestParameterGroupAggregation:
         # Create optimizer with multiple parameter groups
         params1 = [torch.nn.Parameter(torch.randn(5, 5))]
         params2 = [torch.nn.Parameter(torch.randn(5, 5))]
-        optimizer = torch.optim.AdamW([
-            {'params': params1, 'lr': 0.001},
-            {'params': params2, 'lr': 0.001}
-        ])
+        optimizer = torch.optim.AdamW(
+            [{"params": params1, "lr": 0.001}, {"params": params2, "lr": 0.001}]
+        )
 
         wrapper = OptimizerWrapperGNTS(optimizer)
 
@@ -418,8 +396,8 @@ class TestParameterGroupAggregation:
         # Group 0: threshold=10.0
         # Group 1: threshold=0.5
         # MIN = 0.5 should be used
-        optimizer.param_groups[0]['gradient_norm_threshold'] = 10.0
-        optimizer.param_groups[1]['gradient_norm_threshold'] = 0.5
+        optimizer.param_groups[0]["gradient_norm_threshold"] = 10.0
+        optimizer.param_groups[1]["gradient_norm_threshold"] = 0.5
 
         # Apply gradients that would pass threshold=10.0 but not threshold=0.5
         # Total norm with scale=1.0 for 2 params (5,5) = sqrt(25+25) = sqrt(50) ≈ 7.07
@@ -449,20 +427,19 @@ class TestStatisticsReporting:
         optimizer_wrapper = OptimizerWrapperGNTS(optimizer)
 
         # Bind schedule to gradient_norm_threshold
-        scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.5,
-            schedule_target='gradient_norm_threshold'
+        tsa.constant_schedule(
+            optimizer_wrapper, value=0.5, schedule_target="gradient_norm_threshold"
         )
 
         vital_stats = optimizer_wrapper.vital_statistics()
 
-        assert 'gradient_norm_threshold' in vital_stats
-        assert vital_stats['gradient_norm_threshold'] == 0.5
+        assert "gradient_norm_threshold" in vital_stats
+        assert vital_stats["gradient_norm_threshold"] == 0.5
 
 
 # =============================================================================
-# Factory Test Suite: make_gnts_with_cosine_annealing_schedule - tests factory creates correct wrapper and schedules
+# Factory Test Suite: make_gnts_with_cosine_annealing_schedule - tests factory creates
+# correct wrapper and schedules
 # =============================================================================
 
 
@@ -478,7 +455,7 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         assert isinstance(result, tuple)
@@ -493,7 +470,7 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         assert isinstance(optimizer_wrapper, OptimizerWrapperGNTS)
@@ -509,7 +486,7 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of warmup
@@ -535,21 +512,18 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
-
-        # At start of warmup - threshold should be high (inverse warmup starts high)
-        threshold_at_0 = scheduler.get_last_schedule('gradient_norm_threshold')[0]
 
         # At end of warmup - should be around initial_threshold
         for _ in range(100):
             scheduler.step()
-        threshold_at_100 = scheduler.get_last_schedule('gradient_norm_threshold')[0]
+        threshold_at_100 = scheduler.get_last_schedule("gradient_norm_threshold")[0]
 
         # At end of training - should anneal to final_threshold
         for _ in range(900):
             scheduler.step()
-        threshold_at_1000 = scheduler.get_last_schedule('gradient_norm_threshold')[0]
+        threshold_at_1000 = scheduler.get_last_schedule("gradient_norm_threshold")[0]
 
         # Should decrease from warmup to end
         assert threshold_at_100 > threshold_at_1000
@@ -565,13 +539,13 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of training - weight decay should anneal toward zero
         for _ in range(1000):
             scheduler.step()
-        wd_at_end = scheduler.get_last_schedule('weight_decay')[0]
+        wd_at_end = scheduler.get_last_schedule("weight_decay")[0]
 
         # Should be much smaller than initial (annealed down)
         assert wd_at_end < initial_wd * 0.1
@@ -583,9 +557,9 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
         optimizer_wrapper, scheduler = make_gnts_with_cosine_annealing_schedule(
             optimizer=optimizer,
             initial_threshold=10.0,  # Start very high
-            final_threshold=0.001,   # End very low
+            final_threshold=0.001,  # End very low
             num_training_steps=10,
-            num_warmup_steps=2
+            num_warmup_steps=2,
         )
 
         # Early: high threshold, should step quickly
@@ -604,7 +578,8 @@ class TestMakeGNTSWithCosineAnnealingSchedule:
 
 
 # =============================================================================
-# Factory Test Suite: make_gnts_with_cosine_annealing_schedule_conventional_lr - tests conventional LR variant
+# Factory Test Suite: make_gnts_with_cosine_annealing_schedule_conventional_lr - tests
+# conventional LR variant
 # =============================================================================
 
 
@@ -620,7 +595,7 @@ class TestMakeGNTSWithCosineAnnealingScheduleConventionalLR:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         assert isinstance(optimizer_wrapper, OptimizerWrapperGNTS)
@@ -636,7 +611,7 @@ class TestMakeGNTSWithCosineAnnealingScheduleConventionalLR:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of warmup
@@ -662,18 +637,18 @@ class TestMakeGNTSWithCosineAnnealingScheduleConventionalLR:
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of warmup
         for _ in range(100):
             scheduler.step()
-        threshold_at_100 = scheduler.get_last_schedule('gradient_norm_threshold')[0]
+        threshold_at_100 = scheduler.get_last_schedule("gradient_norm_threshold")[0]
 
         # At end of training
         for _ in range(900):
             scheduler.step()
-        threshold_at_1000 = scheduler.get_last_schedule('gradient_norm_threshold')[0]
+        threshold_at_1000 = scheduler.get_last_schedule("gradient_norm_threshold")[0]
 
         # Should decrease
         assert threshold_at_100 > threshold_at_1000
@@ -682,23 +657,22 @@ class TestMakeGNTSWithCosineAnnealingScheduleConventionalLR:
     def test_no_weight_decay_scheduling(self):
         """Weight decay is NOT scheduled in conventional_lr variant."""
         optimizer = create_simple_optimizer()
-        initial_wd = 0.01
 
         optimizer_wrapper, scheduler = make_gnts_with_cosine_annealing_schedule_conventional_lr(
             optimizer=optimizer,
             initial_threshold=1.0,
             final_threshold=0.1,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # Weight decay should stay constant (no scheduling)
-        wd_start = optimizer.param_groups[0]['weight_decay']
+        wd_start = optimizer.param_groups[0]["weight_decay"]
 
         for _ in range(1000):
             scheduler.step()
 
-        wd_end = optimizer.param_groups[0]['weight_decay']
+        wd_end = optimizer.param_groups[0]["weight_decay"]
 
         # Should remain approximately the same
         assert math.isclose(wd_start, wd_end, rel_tol=0.01)
@@ -713,7 +687,7 @@ class TestDistributedMode:
     """Test distributed mode behavioral side effects."""
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_replicated_mode_behaves_like_non_distributed(self):
         """Replicated mode has same stepping behavior as non-distributed."""
         world_size = 2
@@ -729,44 +703,42 @@ class TestDistributedMode:
             # Spawn workers
             mp.spawn(
                 gnts_distributed_worker,
-                args=(world_size, gradients, threshold, "replicated", tmpdir, 'localhost', '29504'),
+                args=(world_size, gradients, threshold, "replicated", tmpdir, "localhost", "29504"),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect logs from all ranks
             logs = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    logs.append(data['log'])
+                    logs.append(data["log"])
 
             # All ranks must agree
             assert all(log == logs[0] for log in logs), "All ranks must agree"
 
             # Verify distributed behavior
-            assert logs[0][0]['stepped'] is True
+            assert logs[0][0]["stepped"] is True
 
             # Compare with non-distributed
             param = torch.nn.Parameter(torch.tensor([1.0]))
             optimizer = torch.optim.AdamW([param], lr=0.001)
             optimizer_wrapper_normal = OptimizerWrapperGNTS(optimizer)
 
-            scheduler_normal = tsa.constant_schedule(
-                optimizer_wrapper_normal,
-                value=threshold,
-                schedule_target='gradient_norm_threshold'
+            tsa.constant_schedule(
+                optimizer_wrapper_normal, value=threshold, schedule_target="gradient_norm_threshold"
             )
 
             param.grad = torch.tensor([0.5])
             result_normal = optimizer_wrapper_normal.step()
 
             # Replicated should match non-distributed (gradients already synchronized)
-            assert logs[0][0]['stepped'] == result_normal
+            assert logs[0][0]["stepped"] == result_normal
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_sharded_mode_combines_norms_across_devices(self):
         """Sharded mode combines gradient norms using sqrt(sum(norm^2)/world_size)."""
         world_size = 2
@@ -784,24 +756,24 @@ class TestDistributedMode:
             # Spawn workers
             mp.spawn(
                 gnts_distributed_worker,
-                args=(world_size, gradients, threshold, "sharded", tmpdir, 'localhost', '29505'),
+                args=(world_size, gradients, threshold, "sharded", tmpdir, "localhost", "29505"),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect logs from all ranks
             logs = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    logs.append(data['log'])
+                    logs.append(data["log"])
 
             # All ranks must agree
             assert all(log == logs[0] for log in logs), "All ranks must agree"
 
             # Verify stepped (combined norm below threshold)
-            assert logs[0][0]['stepped'] is True
+            assert logs[0][0]["stepped"] is True
 
 
 # =============================================================================
@@ -824,7 +796,7 @@ class TestIntegration:
             initial_threshold=2.0,
             final_threshold=0.1,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         # Training loop
@@ -841,7 +813,7 @@ class TestIntegration:
             loss.backward()
 
             # Step wrapper (may or may not step optimizer)
-            stepped = optimizer_wrapper.step()
+            optimizer_wrapper.step()
 
             # Step scheduler
             scheduler.step()
@@ -851,7 +823,7 @@ class TestIntegration:
         assert optimizer_wrapper.num_batches == 100
 
         # Verify schedules evolved
-        final_threshold = scheduler.get_last_schedule('gradient_norm_threshold')[0]
+        final_threshold = scheduler.get_last_schedule("gradient_norm_threshold")[0]
         assert final_threshold < 2.0  # Should have decreased
 
     def test_state_dict_save_load_resume_training(self):
@@ -864,7 +836,7 @@ class TestIntegration:
             initial_threshold=2.0,
             final_threshold=0.1,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         # Train for 50 steps
@@ -894,7 +866,7 @@ class TestIntegration:
             initial_threshold=2.0,
             final_threshold=0.1,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         optimizer_wrapper_new.load_state_dict(wrapper_state)

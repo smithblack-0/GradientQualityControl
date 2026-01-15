@@ -15,15 +15,19 @@ Test organization:
 - Protected method forwarding for subclasses
 - Abstract methods and error conditions
 """
+
 import pytest
 import torch
 
-from src.gradient_quality_control.base.state_management import StateManagementSubsystem
-from src.gradient_quality_control.base.distributed_metrics import DistributedMetricsManagementSubsystem
-from src.gradient_quality_control.base.gradient_accumulation import GradientAccumulationStepSubsystem
-from src.gradient_quality_control.base.reporting import ReportingSubsystem
+from src.gradient_quality_control.base.distributed_metrics import (
+    DistributedMetricsManagementSubsystem,
+)
+from src.gradient_quality_control.base.gradient_accumulation import (
+    GradientAccumulationStepSubsystem,
+)
 from src.gradient_quality_control.base.orchestrator import OrchestratorMainSystem
-
+from src.gradient_quality_control.base.reporting import ReportingSubsystem
+from src.gradient_quality_control.base.state_management import StateManagementSubsystem
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -62,7 +66,7 @@ def create_orchestrator_with_subsystems(distributed_mode=None, max_draws=64):
         state_manager=state_mgr,
         distributed_metrics=distributed_metrics,
         accumulation=accumulation,
-        reporting=reporting
+        reporting=reporting,
     )
 
     return orchestrator, optimizer, state_mgr, distributed_metrics, accumulation, reporting
@@ -151,20 +155,22 @@ class TestPublicProperties:
         orchestrator, _, state_mgr, _, _, _ = create_orchestrator_with_subsystems()
 
         # Add optimizer parameter through orchestrator
-        orchestrator._set_state('custom_param', 0.5, 'optimizer')
+        orchestrator._set_state("custom_param", 0.5, "optimizer")
 
         targets = orchestrator.valid_schedule_targets
 
         # Verify it appears in targets
-        assert 'custom_param' in targets
+        assert "custom_param" in targets
 
         # Verify coupling: state_mgr has it too
         state_list = state_mgr.show_state()
-        assert ('custom_param', 'optimizer') in state_list
+        assert ("custom_param", "optimizer") in state_list
 
     def test_distributed_mode_forwards_to_distributed_metrics(self):
         """distributed_mode property forwards to distributed metrics subsystem."""
-        orchestrator, _, _, distributed_metrics, _, _ = create_orchestrator_with_subsystems(distributed_mode='replicated')
+        orchestrator, _, _, distributed_metrics, _, _ = create_orchestrator_with_subsystems(
+            distributed_mode="replicated"
+        )
 
         # Verify coupling: both return same value
         assert orchestrator.distributed_mode == distributed_metrics.distributed_mode
@@ -191,47 +197,47 @@ class TestPublicMethods:
         orchestrator, _, state_mgr, _, _, reporting = create_orchestrator_with_subsystems()
 
         # Setup through orchestrator
-        orchestrator._set_state('test_value', 123, 'vital')
+        orchestrator._set_state("test_value", 123, "vital")
 
         # Get from orchestrator
-        result = orchestrator.statistics(behavior='verbose')
+        result = orchestrator.statistics(behavior="verbose")
 
-        assert 'test_value' in result
-        assert result['test_value'] == 123
+        assert "test_value" in result
+        assert result["test_value"] == 123
 
         # Verify coupling: reporting subsystem returns same data
-        reporting_result = reporting.statistics(behavior='verbose')
-        assert reporting_result['test_value'] == result['test_value']
+        reporting_result = reporting.statistics(behavior="verbose")
+        assert reporting_result["test_value"] == result["test_value"]
 
     def test_vital_statistics_forwards_to_reporting_subsystem(self):
         """vital_statistics() forwards to reporting subsystem."""
         orchestrator, _, _, _, _, reporting = create_orchestrator_with_subsystems()
 
         # Setup through orchestrator
-        orchestrator._set_state('vital_metric', 456, 'vital')
+        orchestrator._set_state("vital_metric", 456, "vital")
 
         # Get from orchestrator
         result = orchestrator.vital_statistics()
 
-        assert 'vital_metric' in result
+        assert "vital_metric" in result
 
         # Verify coupling: reporting subsystem returns same data
         reporting_result = reporting.vital_statistics()
-        assert reporting_result['vital_metric'] == result['vital_metric']
+        assert reporting_result["vital_metric"] == result["vital_metric"]
 
     def test_state_dict_forwards_to_state_manager(self):
         """state_dict() forwards to state manager subsystem."""
         orchestrator, _, state_mgr, _, _, _ = create_orchestrator_with_subsystems()
 
         # Setup through orchestrator
-        orchestrator._set_state('counter', 100, 'vital')
-        orchestrator._set_state('banana', 3.0, 'optional')
+        orchestrator._set_state("counter", 100, "vital")
+        orchestrator._set_state("banana", 3.0, "optional")
 
         # Get state dict from orchestrator
         state_dict = orchestrator.state_dict()
 
         assert isinstance(state_dict, dict)
-        assert 'wrapper_states' in state_dict
+        assert "wrapper_states" in state_dict
 
         # Verify coupling: state_mgr returns same state dict
         state_mgr_dict = state_mgr.state_dict()
@@ -271,46 +277,46 @@ class TestProtectedMethods:
         """_set_state() forwards to state manager."""
         orchestrator, _, state_mgr, _, _, _ = create_orchestrator_with_subsystems()
 
-        orchestrator._set_state('subclass_param', 0.99, 'vital')
+        orchestrator._set_state("subclass_param", 0.99, "vital")
 
         # Should be stored in state manager
-        assert state_mgr.get_state('subclass_param') == 0.99
+        assert state_mgr.get_state("subclass_param") == 0.99
 
     def test_get_state_retrieves_from_state_manager_without_aggregation(self):
         """_get_state() without aggregation retrieves raw value from state manager."""
         orchestrator, _, state_mgr, _, _, _ = create_orchestrator_with_subsystems()
 
         # Setup through orchestrator
-        orchestrator._set_state('param', [1.0, 2.0, 3.0], 'vital')
+        orchestrator._set_state("param", [1.0, 2.0, 3.0], "vital")
 
         # Get through orchestrator
-        result = orchestrator._get_state('param')
+        result = orchestrator._get_state("param")
 
         assert result == [1.0, 2.0, 3.0]
 
         # Verify coupling: state_mgr has same value
-        assert state_mgr.get_state('param') == result
+        assert state_mgr.get_state("param") == result
 
     def test_get_state_aggregates_with_reporting_when_specified(self):
         """_get_state() with aggregation uses reporting subsystem."""
         orchestrator, _, _, _, _, reporting = create_orchestrator_with_subsystems()
 
         # Setup through orchestrator
-        orchestrator._set_state('values', [1.0, 2.0, 3.0], 'vital')
+        orchestrator._set_state("values", [1.0, 2.0, 3.0], "vital")
 
         # Get with aggregation through orchestrator
-        result1 = orchestrator._get_state('values', aggregate_behavior='mean')
-        result2 = orchestrator._get_state('values', aggregate_behavior='max')
-        result3 = orchestrator._get_state('values', aggregate_behavior='min')
+        result1 = orchestrator._get_state("values", aggregate_behavior="mean")
+        result2 = orchestrator._get_state("values", aggregate_behavior="max")
+        result3 = orchestrator._get_state("values", aggregate_behavior="min")
 
         assert result1 == 2.0
         assert result2 == 3.0
         assert result3 == 1.0
 
         # Verify coupling: reporting subsystem produces same aggregations
-        assert reporting.aggregate_numeric_list([1.0, 2.0, 3.0], 'mean') == 2.0
-        assert reporting.aggregate_numeric_list([1.0, 2.0, 3.0], 'max') == 3.0
-        assert reporting.aggregate_numeric_list([1.0, 2.0, 3.0], 'min') == 1.0
+        assert reporting.aggregate_numeric_list([1.0, 2.0, 3.0], "mean") == 2.0
+        assert reporting.aggregate_numeric_list([1.0, 2.0, 3.0], "max") == 3.0
+        assert reporting.aggregate_numeric_list([1.0, 2.0, 3.0], "min") == 1.0
 
     def test_bind_metric_forwards_to_distributed_metrics(self):
         """_bind_metric() forwards to distributed metrics subsystem."""
@@ -323,7 +329,7 @@ class TestProtectedMethods:
             return x
 
         # Should not raise
-        orchestrator._bind_metric('test_metric', reader, merger, merger, merger)
+        orchestrator._bind_metric("test_metric", reader, merger, merger, merger)
 
     def test_bind_metric_uses_default_passthrough_for_normal_merger(self):
         """_bind_metric() uses passthrough lambda when normal_merger not provided."""
@@ -339,10 +345,10 @@ class TestProtectedMethods:
             return x * 3
 
         # Bind with only 3 functions - should use default passthrough for normal
-        orchestrator._bind_metric('test_metric', reader, replicated_merger, sharded_merger)
+        orchestrator._bind_metric("test_metric", reader, replicated_merger, sharded_merger)
 
         # With distributed_mode=None, should use normal_merger (the default passthrough)
-        result = orchestrator._get_metric('test_metric')
+        result = orchestrator._get_metric("test_metric")
 
         # Should be 42.0 (no transformation from passthrough)
         assert result == 42.0
@@ -357,9 +363,9 @@ class TestProtectedMethods:
         def merger(x):
             return x * 2
 
-        orchestrator._bind_metric('test_metric', reader, merger, merger, merger)
+        orchestrator._bind_metric("test_metric", reader, merger, merger, merger)
 
-        result = orchestrator._get_metric('test_metric')
+        result = orchestrator._get_metric("test_metric")
 
         assert result == 198.0  # 99.0 * 2
 
@@ -379,7 +385,7 @@ class TestProtectedMethods:
 
         # Set gradients and accumulate a batch
         for group in optimizer.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 param.grad = torch.ones_like(param)
 
         orchestrator._batch_received()
@@ -405,7 +411,7 @@ class TestIntegration:
 
         # Set gradients
         for group in optimizer.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 param.grad = torch.ones_like(param)
 
         # Step should call batch_received and take_optimizer_step internally
@@ -414,7 +420,7 @@ class TestIntegration:
         assert not stepped  # First batch, shouldn't step
 
         for group in optimizer.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 param.grad = torch.ones_like(param)
 
         stepped = orchestrator.step()
@@ -431,11 +437,11 @@ class TestIntegration:
         orchestrator, optimizer, _, _, _, _ = create_orchestrator_with_subsystems()
 
         # Add some state
-        orchestrator._set_state('custom_value', 789, 'vital')
+        orchestrator._set_state("custom_value", 789, "vital")
 
         # Set gradients and step
         for group in optimizer.param_groups:
-            for param in group['params']:
+            for param in group["params"]:
                 param.grad = torch.ones_like(param)
 
         orchestrator.step()
@@ -451,32 +457,34 @@ class TestIntegration:
         # Should match
         assert new_orchestrator.num_batches == orchestrator.num_batches
         assert new_orchestrator.num_steps == orchestrator.num_steps
-        assert new_orchestrator._get_state('custom_value') == 789
+        assert new_orchestrator._get_state("custom_value") == 789
 
     def test_statistics_include_data_from_all_subsystems(self):
         """statistics() aggregates data from state manager, accumulation, and optimizer."""
         orchestrator, _, _, _, _, _ = create_orchestrator_with_subsystems()
 
-        orchestrator._set_state('wrapper_metric', 123, 'vital')
+        orchestrator._set_state("wrapper_metric", 123, "vital")
 
-        stats = orchestrator.statistics(behavior='verbose')
+        stats = orchestrator.statistics(behavior="verbose")
 
         # Should include accumulation counters
-        assert 'num_batches' in stats
-        assert 'num_steps' in stats
+        assert "num_batches" in stats
+        assert "num_steps" in stats
 
         # Should include wrapper state
-        assert 'wrapper_metric' in stats
+        assert "wrapper_metric" in stats
 
         # Should include optimizer params
-        assert 'lr' in stats
+        assert "lr" in stats
 
     def test_distributed_mode_propagates_through_metrics(self):
         """Distributed mode set in constructor propagates to metric resolution."""
-        orchestrator, _, _, _, _, _ = create_orchestrator_with_subsystems(distributed_mode='replicated')
+        orchestrator, _, _, _, _, _ = create_orchestrator_with_subsystems(
+            distributed_mode="replicated"
+        )
 
         # Verify distributed mode accessible
-        assert orchestrator.distributed_mode == 'replicated'
+        assert orchestrator.distributed_mode == "replicated"
 
         # Bind a metric
         def reader():
@@ -491,10 +499,10 @@ class TestIntegration:
         def sharded_merger(x):
             return x * 1000
 
-        orchestrator._bind_metric('test', reader, replicated_merger, sharded_merger, normal_merger)
+        orchestrator._bind_metric("test", reader, replicated_merger, sharded_merger, normal_merger)
 
         # Get metric should use replicated merger
-        result = orchestrator._get_metric('test')
+        result = orchestrator._get_metric("test")
 
         assert result == 1000.0  # 10.0 * 100
 

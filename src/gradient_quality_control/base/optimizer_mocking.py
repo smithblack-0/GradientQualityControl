@@ -6,6 +6,7 @@ as wrapped optimizer while blocking direct state mutation after initialization.
 """
 
 from typing import Any
+
 from torch.optim import Optimizer
 
 
@@ -26,9 +27,12 @@ class OptimizerMockingMixin:
         Post-conditions:
             Sets _initialized flag to True
         """
-        object.__setattr__(self, '_initialized', True)
+        object.__setattr__(self, "_initialized", True)
 
-    def __getattribute__(self, name: str,) -> Any:
+    def __getattribute__(
+        self,
+        name: str,
+    ) -> Any:
         """
         Forward attribute access to wrapped optimizer while preserving wrapper's interface.
 
@@ -44,10 +48,10 @@ class OptimizerMockingMixin:
             Attribute value from wrapper or optimizer
         """
         # Get instance dict to check for instance attributes
-        instance_dict = object.__getattribute__(self, '__dict__')
+        instance_dict = object.__getattribute__(self, "__dict__")
 
         # Walk MRO until reaching Optimizer class
-        for cls in object.__getattribute__(self, '__class__').__mro__:
+        for cls in object.__getattribute__(self, "__class__").__mro__:
             # Stop before Optimizer (don't check Optimizer's __dict__)
             if cls is Optimizer:
                 break
@@ -62,10 +66,14 @@ class OptimizerMockingMixin:
             return instance_dict[name]
 
         # Not found in wrapper hierarchy or instance - forward to optimizer
-        optimizer = instance_dict['_optimizer']
+        optimizer = instance_dict["_optimizer"]
         return getattr(optimizer, name)
 
-    def __setattr__(self, name: str, value: Any,) -> None:
+    def __setattr__(
+        self,
+        name: str,
+        value: Any,
+    ) -> None:
         """
         Forward attribute assignment to wrapped optimizer while allowing initialization.
 
@@ -84,10 +92,10 @@ class OptimizerMockingMixin:
             RuntimeError: If attempting to set wrapper attribute after initialization
         """
         # Get instance dict
-        instance_dict = object.__getattribute__(self, '__dict__')
+        instance_dict = object.__getattribute__(self, "__dict__")
 
         # Check if we're still in __init__
-        if '_initialized' not in instance_dict:
+        if "_initialized" not in instance_dict:
             # During initialization - set locally
             object.__setattr__(self, name, value)
             return
@@ -96,12 +104,10 @@ class OptimizerMockingMixin:
 
         # Check if name is in instance dict (instance attribute collision)
         if name in instance_dict:
-            raise RuntimeError(
-                f"Cannot set attribute '{name}': collides with wrapper interface"
-            )
+            raise RuntimeError(f"Cannot set attribute '{name}': collides with wrapper interface")
 
         # Walk MRO until Optimizer to check for class attribute collisions
-        for cls in object.__getattribute__(self, '__class__').__mro__:
+        for cls in object.__getattribute__(self, "__class__").__mro__:
             # Stop before Optimizer
             if cls is Optimizer:
                 break
@@ -113,5 +119,5 @@ class OptimizerMockingMixin:
                 )
 
         # No collision - forward to optimizer
-        optimizer = instance_dict['_optimizer']
+        optimizer = instance_dict["_optimizer"]
         setattr(optimizer, name, value)

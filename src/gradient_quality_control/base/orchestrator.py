@@ -4,14 +4,15 @@ OrchestratorMainSystem implementation.
 Main facade coordinating all subsystems and exposing unified public and protected API.
 """
 
-import torch
-from typing import Dict, Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from .optimizer_mocking import OptimizerMockingMixin
-from .state_management import StateManagementSubsystem
+import torch
+
 from .distributed_metrics import DistributedMetricsManagementSubsystem
 from .gradient_accumulation import GradientAccumulationStepSubsystem
+from .optimizer_mocking import OptimizerMockingMixin
 from .reporting import ReportingSubsystem
+from .state_management import StateManagementSubsystem
 
 
 class OrchestratorMainSystem(OptimizerMockingMixin):
@@ -76,7 +77,7 @@ class OrchestratorMainSystem(OptimizerMockingMixin):
         return self._accumulation.num_draws
 
     @property
-    def max_draws(self)->int:
+    def max_draws(self) -> int:
         """Maximum allowed draws."""
         return self._accumulation.max_draws
 
@@ -108,13 +109,17 @@ class OrchestratorMainSystem(OptimizerMockingMixin):
     @property
     def device(self) -> torch.device:
         """Device the optimizer's parameters are on. Returns device of first parameter."""
-        return self._optimizer.param_groups[0]['params'][0].device
+        return self._optimizer.param_groups[0]["params"][0].device
 
     # =========================================================================
     # Public Methods
     # =========================================================================
 
-    def step(self, *args, **kwargs,) -> bool:
+    def step(
+        self,
+        *args,
+        **kwargs,
+    ) -> bool:
         """
         Abstract method for subclasses to implement control algorithm.
 
@@ -187,7 +192,10 @@ class OrchestratorMainSystem(OptimizerMockingMixin):
         """
         return self._state_manager.state_dict()
 
-    def load_state_dict(self, state_dict: Dict[str, Any],) -> None:
+    def load_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+    ) -> None:
         """
         Restores wrapper state from checkpoint.
 
@@ -253,7 +261,7 @@ class OrchestratorMainSystem(OptimizerMockingMixin):
         metric_reader: Any,
         replicated_merger: Any,
         sharded_merger: Any,
-        normal_merger: Any = lambda x: x
+        normal_merger: Any = lambda x: x,
     ) -> None:
         """
         Register metric and its distributed resolution rules.
@@ -268,11 +276,7 @@ class OrchestratorMainSystem(OptimizerMockingMixin):
             normal_merger: Merger for single-device mode (default: passthrough)
         """
         self._distributed_metrics.bind_metric(
-            name,
-            metric_reader,
-            replicated_merger,
-            sharded_merger,
-            normal_merger
+            name, metric_reader, replicated_merger, sharded_merger, normal_merger
         )
 
     def _get_metric(self, name: str, *args, **kwargs) -> Any:

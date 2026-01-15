@@ -5,15 +5,16 @@ Original test series control, able to measure the variance in a metric
 and use it to decide when to step.
 """
 
-from typing import Optional, Literal, Tuple, List
 from numbers import Number
+from typing import List, Literal, Optional, Tuple
 
+import scipy.stats as stats
 import torch
 import torch.distributed as dist
 import torch_schedule_anything as tsa
-import scipy.stats as stats
 
 from ..base.abstract_optimizer_wrapper import AbstractOptimizerWrapper
+
 
 class OptimizerWrapperMHT(AbstractOptimizerWrapper):
     """
@@ -34,18 +35,17 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
     """
 
     @property
-    def running_mean(self)->float:
+    def running_mean(self) -> float:
         """Gets the running mean from storage"""
         return self._get_state("running_mean")
 
     @property
-    def update_beta(self)->float:
+    def update_beta(self) -> float:
         """Gets the running mean update beta"""
         return self._get_state("update_beta")
 
-
     @staticmethod
-    def merge_common_metrics(metric: float)->List[float]:
+    def merge_common_metrics(metric: float) -> List[float]:
         """Adds a list to anything going through"""
         return [metric]
 
@@ -63,12 +63,12 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
         return [t.item() for t in gathered]
 
     def __init__(
-            self,
-            optimizer: torch.optim.Optimizer,
-            max_batch_draws: int = 64,
-            distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
-            update_beta: float = 0.01
-            ):
+        self,
+        optimizer: torch.optim.Optimizer,
+        max_batch_draws: int = 64,
+        distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
+        update_beta: float = 0.01,
+    ):
         """
         :param optimizer: The optimizer
         :param max_batch_draws: The maximum number of draws
@@ -92,11 +92,13 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
         self._set_state("percent_error_threshold", 1.0, "optimizer")
 
         # Register metrics.
-        self._bind_metric("step_metrics",
-                          metric_reader=lambda x : x,
-                          replicated_merger=self.merge_independent_metrics,
-                          sharded_merger=self.merge_common_metrics,
-                          normal_merger=self.merge_common_metrics)
+        self._bind_metric(
+            "step_metrics",
+            metric_reader=lambda x: x,
+            replicated_merger=self.merge_independent_metrics,
+            sharded_merger=self.merge_common_metrics,
+            normal_merger=self.merge_common_metrics,
+        )
 
     def update_state(self, metric: Number):
         """
@@ -120,7 +122,7 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
             average = self.running_mean * (1 - self.update_beta) + update * self.update_beta
         self._set_state("running_mean", average, "vital")
 
-    def should_we_step(self, judgment_list: List[float])->bool:
+    def should_we_step(self, judgment_list: List[float]) -> bool:
         """
         Tests and determine if we should step.
         :param judgment_list: The input parameters that matter
@@ -137,7 +139,9 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
 
         # Fetch and aggregate schedules from param groups
         confidence_level = self._get_state("confidence_level", aggregate_behavior="mean")
-        percent_error_threshold = self._get_state("percent_error_threshold", aggregate_behavior="mean")
+        percent_error_threshold = self._get_state(
+            "percent_error_threshold", aggregate_behavior="mean"
+        )
 
         # Compute ci_low, ci_high for this case and compute mean.
         mean = sum(judgment_list) / len(judgment_list)
@@ -148,8 +152,8 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
             scale=stats.sem(judgment_list) + 1e-12,
         )
         # maximum and minimum
-        max_threshold = mean*(1 + percent_error_threshold)
-        min_threshold = mean*(1 - percent_error_threshold)
+        max_threshold = mean * (1 + percent_error_threshold)
+        min_threshold = mean * (1 - percent_error_threshold)
 
         # Is the confidence interval lower than the percent minimum?
         if ci_low < min_threshold:
@@ -162,8 +166,7 @@ class OptimizerWrapperMHT(AbstractOptimizerWrapper):
         # We must be passing
         return True
 
-
-    def step(self, metric: Number)->bool:
+    def step(self, metric: Number) -> bool:
         """
         Performs the update to the history and running average
         and decides when to step.
@@ -215,9 +218,7 @@ def make_mht_with_warmup_schedule(
     """
     # Create wrapper
     wrapper = OptimizerWrapperMHT(
-        optimizer,
-        max_batch_draws=max_batch_draws,
-        distributed_mode=distributed_mode
+        optimizer, max_batch_draws=max_batch_draws, distributed_mode=distributed_mode
     )
 
     # Learning rate: Warmup then cosine anneal to zero (using multipliers)
@@ -227,7 +228,7 @@ def make_mht_with_warmup_schedule(
         anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Confidence level: Warmup to constant
@@ -237,7 +238,7 @@ def make_mht_with_warmup_schedule(
         anneal_to_value=confidence_level,  # No annealing, stays constant
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='confidence_level'
+        schedule_target="confidence_level",
     )
 
     # Percent error threshold: Warmup to constant
@@ -247,7 +248,7 @@ def make_mht_with_warmup_schedule(
         anneal_to_value=percent_error_threshold,  # No annealing, stays constant
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='percent_error_threshold'
+        schedule_target="percent_error_threshold",
     )
 
     sync = tsa.SynchronousSchedule([lr_schedule, confidence_schedule, error_schedule])

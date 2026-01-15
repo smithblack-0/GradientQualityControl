@@ -17,25 +17,26 @@ Test organization:
 - Distributed mode behaviors
 - Parameter group aggregation
 """
-import pytest
-import sys
-import os
-import math
+
 import json
-import tempfile
+import math
+import os
 import random
+import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 import torch
-import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.nn as nn
 import torch_schedule_anything as tsa
 
 from src.gradient_quality_control.implementations.metric_hypothesis_test import (
     OptimizerWrapperMHT,
     make_mht_with_warmup_schedule,
 )
-
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -51,23 +52,33 @@ def create_simple_optimizer():
 def apply_gradients(optimizer_wrapper):
     """Apply dummy gradients to all parameters."""
     for group in optimizer_wrapper.param_groups:
-        for param in group['params']:
+        for param in group["params"]:
             param.grad = torch.ones_like(param)
 
 
-def mht_distributed_worker(rank, world_size, metrics, confidence_level, percent_error_threshold, distributed_mode, output_dir, master_addr, master_port):
+def mht_distributed_worker(
+    rank,
+    world_size,
+    metrics,
+    confidence_level,
+    percent_error_threshold,
+    distributed_mode,
+    output_dir,
+    master_addr,
+    master_port,
+):
     """
     Infrastructure worker for MHT distributed testing.
 
     Interprets metrics list as: metrics[step] = scalar metric value to pass to step().
     Logs vital_statistics + stepped after each step.
     """
-    os.environ['MASTER_ADDR'] = master_addr
-    os.environ['MASTER_PORT'] = master_port
-    os.environ['RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(world_size)
+    os.environ["MASTER_ADDR"] = master_addr
+    os.environ["MASTER_PORT"] = master_port
+    os.environ["RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
 
-    dist.init_process_group(backend='gloo', rank=rank, world_size=world_size)
+    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
 
     try:
         # Create wrapper
@@ -76,15 +87,13 @@ def mht_distributed_worker(rank, world_size, metrics, confidence_level, percent_
         optimizer_wrapper = OptimizerWrapperMHT(optimizer, distributed_mode=distributed_mode)
 
         # Bind schedules
-        conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=confidence_level,
-            schedule_target='confidence_level'
+        tsa.constant_schedule(
+            optimizer_wrapper, value=confidence_level, schedule_target="confidence_level"
         )
-        error_scheduler = tsa.constant_schedule(
+        tsa.constant_schedule(
             optimizer_wrapper,
             value=percent_error_threshold,
-            schedule_target='percent_error_threshold'
+            schedule_target="percent_error_threshold",
         )
 
         # Skip initialization step (running_mean == first_metric causes zero variance)
@@ -100,8 +109,8 @@ def mht_distributed_worker(rank, world_size, metrics, confidence_level, percent_
             result = optimizer_wrapper.step(metric=metric_value)
 
             stats = optimizer_wrapper.vital_statistics()
-            stats['stepped'] = result
-            stats['step_number'] = step_num
+            stats["stepped"] = result
+            stats["step_number"] = step_num
             log.append(stats)
 
             # Stop if we stepped (for comparison tests)
@@ -109,9 +118,9 @@ def mht_distributed_worker(rank, world_size, metrics, confidence_level, percent_
                 break
 
         # Save log
-        output_file = Path(output_dir) / f'rank_{rank}.json'
-        with open(output_file, 'w') as f:
-            json.dump({'rank': rank, 'log': log}, f)
+        output_file = Path(output_dir) / f"rank_{rank}.json"
+        with open(output_file, "w") as f:
+            json.dump({"rank": rank, "log": log}, f)
 
     finally:
         dist.destroy_process_group()
@@ -138,10 +147,7 @@ class TestConstructor:
         """Constructor accepts max_batch_draws parameter."""
         optimizer = create_simple_optimizer()
 
-        optimizer_wrapper = OptimizerWrapperMHT(
-            optimizer,
-            max_batch_draws=16
-        )
+        optimizer_wrapper = OptimizerWrapperMHT(optimizer, max_batch_draws=16)
 
         assert optimizer_wrapper is not None
 
@@ -149,10 +155,7 @@ class TestConstructor:
         """Constructor accepts distributed_mode parameter."""
         optimizer = create_simple_optimizer()
 
-        optimizer_wrapper = OptimizerWrapperMHT(
-            optimizer,
-            distributed_mode="replicated"
-        )
+        optimizer_wrapper = OptimizerWrapperMHT(optimizer, distributed_mode="replicated")
 
         assert optimizer_wrapper.distributed_mode == "replicated"
 
@@ -161,9 +164,7 @@ class TestConstructor:
         optimizer = create_simple_optimizer()
 
         optimizer_wrapper = OptimizerWrapperMHT(
-            optimizer,
-            max_batch_draws=16,
-            distributed_mode="sharded"
+            optimizer, max_batch_draws=16, distributed_mode="sharded"
         )
 
         assert optimizer_wrapper is not None
@@ -179,10 +180,7 @@ class TestConstructor:
         optimizer = create_simple_optimizer()
 
         with pytest.raises(ValueError):
-            OptimizerWrapperMHT(
-                optimizer,
-                distributed_mode="invalid"
-            )
+            OptimizerWrapperMHT(optimizer, distributed_mode="invalid")
 
 
 # =============================================================================
@@ -200,7 +198,7 @@ class TestScheduleTargetExposure:
 
         targets = optimizer_wrapper.valid_schedule_targets
 
-        assert 'confidence_level' in targets
+        assert "confidence_level" in targets
 
     def test_exposes_percent_error_threshold_target(self):
         """Wrapper exposes percent_error_threshold as schedule target."""
@@ -209,7 +207,7 @@ class TestScheduleTargetExposure:
 
         targets = optimizer_wrapper.valid_schedule_targets
 
-        assert 'percent_error_threshold' in targets
+        assert "percent_error_threshold" in targets
 
 
 # =============================================================================
@@ -256,16 +254,14 @@ class TestStepAlgorithm:
 
         # Set tight thresholds
         conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.95,
-            schedule_target='confidence_level'
+            optimizer_wrapper, value=0.95, schedule_target="confidence_level"
         )
         error_scheduler = tsa.constant_schedule(
             optimizer_wrapper,
             value=0.10,  # 10% error tolerance
-            schedule_target='percent_error_threshold'
+            schedule_target="percent_error_threshold",
         )
-        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+        tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
         # Provide very similar metric values (low variance)
         apply_gradients(optimizer_wrapper)
@@ -288,16 +284,14 @@ class TestStepAlgorithm:
 
         # Set tight thresholds
         conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.95,
-            schedule_target='confidence_level'
+            optimizer_wrapper, value=0.95, schedule_target="confidence_level"
         )
         error_scheduler = tsa.constant_schedule(
             optimizer_wrapper,
             value=0.05,  # Very tight 5% tolerance
-            schedule_target='percent_error_threshold'
+            schedule_target="percent_error_threshold",
         )
-        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+        tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
         # Provide highly variable metric values
         apply_gradients(optimizer_wrapper)
@@ -321,23 +315,18 @@ class TestStepAlgorithm:
     def test_force_steps_at_max_batch_draws(self):
         """Forces step when max_batch_draws reached regardless of CI."""
         optimizer = create_simple_optimizer()
-        optimizer_wrapper = OptimizerWrapperMHT(
-            optimizer,
-            max_batch_draws=3
-        )
+        optimizer_wrapper = OptimizerWrapperMHT(optimizer, max_batch_draws=3)
 
         # Set impossible thresholds
         conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.9999,
-            schedule_target='confidence_level'
+            optimizer_wrapper, value=0.9999, schedule_target="confidence_level"
         )
         error_scheduler = tsa.constant_schedule(
             optimizer_wrapper,
             value=0.001,  # 0.1% tolerance - nearly impossible
-            schedule_target='percent_error_threshold'
+            schedule_target="percent_error_threshold",
         )
-        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+        tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
         # Provide highly variable metrics that won't meet criterion
         apply_gradients(optimizer_wrapper)
@@ -371,12 +360,10 @@ class TestStepAlgorithm:
             schedule_factory=lambda opt: torch.optim.lr_scheduler.LambdaLR(
                 opt, lr_lambda=lambda step: 0.50 if step == 0 else 0.9999
             ),
-            schedule_target='confidence_level'
+            schedule_target="confidence_level",
         )
         error_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.10,
-            schedule_target='percent_error_threshold'
+            optimizer_wrapper, value=0.10, schedule_target="percent_error_threshold"
         )
         sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
@@ -402,16 +389,14 @@ class TestStepAlgorithm:
 
         # Set impossibly tight threshold - will never pass
         conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.95,
-            schedule_target='confidence_level'
+            optimizer_wrapper, value=0.95, schedule_target="confidence_level"
         )
         error_scheduler = tsa.constant_schedule(
             optimizer_wrapper,
             value=0.0001,  # Impossibly tight
-            schedule_target='percent_error_threshold'
+            schedule_target="percent_error_threshold",
         )
-        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+        tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
         # Skip initialization step
         apply_gradients(optimizer_wrapper)
@@ -423,10 +408,10 @@ class TestStepAlgorithm:
         assert result1 is False
 
         # Change to impossibly loose threshold - will always pass
-        error_scheduler = tsa.constant_schedule(
+        tsa.constant_schedule(
             optimizer_wrapper,
             value=0.99,  # Impossibly loose
-            schedule_target='percent_error_threshold'
+            schedule_target="percent_error_threshold",
         )
 
         # Now should step
@@ -446,16 +431,14 @@ class TestStepAlgorithm:
 
             # Set moderate tolerance
             conf_scheduler = tsa.constant_schedule(
-                optimizer_wrapper,
-                value=0.95,
-                schedule_target='confidence_level'
+                optimizer_wrapper, value=0.95, schedule_target="confidence_level"
             )
             error_scheduler = tsa.constant_schedule(
                 optimizer_wrapper,
                 value=0.10,  # 10% error tolerance
-                schedule_target='percent_error_threshold'
+                schedule_target="percent_error_threshold",
             )
-            sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+            tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
             # Skip initialization
             apply_gradients(optimizer_wrapper)
@@ -480,7 +463,9 @@ class TestStepAlgorithm:
 
         # Low variance should step faster in most trials
         success_rate = low_faster_count / num_trials
-        assert success_rate >= 0.90, f"Low variance only faster in {success_rate*100:.1f}% of trials"
+        assert (
+            success_rate >= 0.90
+        ), f"Low variance only faster in {success_rate*100:.1f}% of trials"
 
 
 # =============================================================================
@@ -489,17 +474,17 @@ class TestStepAlgorithm:
 
 
 class TestParameterGroupAggregation:
-    """Test that MEAN confidence_level and percent_error_threshold are used across parameter groups."""
+    """Test that MEAN confidence_level and percent_error_threshold are used across parameter
+    groups."""
 
     def test_uses_mean_confidence_level_across_groups(self):
         """Uses MEAN confidence_level when multiple param groups have different values."""
         # Create optimizer with multiple parameter groups
         params1 = [torch.nn.Parameter(torch.randn(5, 5))]
         params2 = [torch.nn.Parameter(torch.randn(5, 5))]
-        optimizer = torch.optim.AdamW([
-            {'params': params1, 'lr': 0.001},
-            {'params': params2, 'lr': 0.001}
-        ])
+        optimizer = torch.optim.AdamW(
+            [{"params": params1, "lr": 0.001}, {"params": params2, "lr": 0.001}]
+        )
 
         wrapper = OptimizerWrapperMHT(optimizer)
 
@@ -507,12 +492,12 @@ class TestParameterGroupAggregation:
         # Group 0: confidence_level=0.90
         # Group 1: confidence_level=0.98
         # MEAN = (0.90 + 0.98) / 2 = 0.94
-        optimizer.param_groups[0]['confidence_level'] = 0.90
-        optimizer.param_groups[1]['confidence_level'] = 0.98
+        optimizer.param_groups[0]["confidence_level"] = 0.90
+        optimizer.param_groups[1]["confidence_level"] = 0.98
 
         # Set same percent_error_threshold
-        optimizer.param_groups[0]['percent_error_threshold'] = 0.10
-        optimizer.param_groups[1]['percent_error_threshold'] = 0.10
+        optimizer.param_groups[0]["percent_error_threshold"] = 0.10
+        optimizer.param_groups[1]["percent_error_threshold"] = 0.10
 
         # Provide low-variance metrics that should pass with mean confidence
         for param in params1 + params2:
@@ -531,23 +516,22 @@ class TestParameterGroupAggregation:
         # Create optimizer with multiple parameter groups
         params1 = [torch.nn.Parameter(torch.randn(5, 5))]
         params2 = [torch.nn.Parameter(torch.randn(5, 5))]
-        optimizer = torch.optim.AdamW([
-            {'params': params1, 'lr': 0.001},
-            {'params': params2, 'lr': 0.001}
-        ])
+        optimizer = torch.optim.AdamW(
+            [{"params": params1, "lr": 0.001}, {"params": params2, "lr": 0.001}]
+        )
 
         wrapper = OptimizerWrapperMHT(optimizer)
 
         # Set same confidence_level
-        optimizer.param_groups[0]['confidence_level'] = 0.95
-        optimizer.param_groups[1]['confidence_level'] = 0.95
+        optimizer.param_groups[0]["confidence_level"] = 0.95
+        optimizer.param_groups[1]["confidence_level"] = 0.95
 
         # Set different percent_error_threshold for each group
         # Group 0: percent_error_threshold=0.05
         # Group 1: percent_error_threshold=0.15
         # MEAN = (0.05 + 0.15) / 2 = 0.10
-        optimizer.param_groups[0]['percent_error_threshold'] = 0.05
-        optimizer.param_groups[1]['percent_error_threshold'] = 0.15
+        optimizer.param_groups[0]["percent_error_threshold"] = 0.05
+        optimizer.param_groups[1]["percent_error_threshold"] = 0.15
 
         # Provide metrics
         for param in params1 + params2:
@@ -576,15 +560,11 @@ class TestStatisticsReporting:
         optimizer_wrapper = OptimizerWrapperMHT(optimizer)
 
         # Bind schedule
-        scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.95,
-            schedule_target='confidence_level'
-        )
+        tsa.constant_schedule(optimizer_wrapper, value=0.95, schedule_target="confidence_level")
 
         vital_stats = optimizer_wrapper.vital_statistics()
 
-        assert 'confidence_level' in vital_stats
+        assert "confidence_level" in vital_stats
 
     def test_vital_statistics_includes_percent_error_threshold(self):
         """vital_statistics() includes percent_error_threshold (vital)."""
@@ -592,15 +572,13 @@ class TestStatisticsReporting:
         optimizer_wrapper = OptimizerWrapperMHT(optimizer)
 
         # Bind schedule
-        scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.10,
-            schedule_target='percent_error_threshold'
+        tsa.constant_schedule(
+            optimizer_wrapper, value=0.10, schedule_target="percent_error_threshold"
         )
 
         vital_stats = optimizer_wrapper.vital_statistics()
 
-        assert 'percent_error_threshold' in vital_stats
+        assert "percent_error_threshold" in vital_stats
 
     def test_statistics_values_match_scheduled_values(self):
         """statistics() values match currently scheduled values."""
@@ -609,22 +587,18 @@ class TestStatisticsReporting:
 
         # Set specific values
         conf_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.98,
-            schedule_target='confidence_level'
+            optimizer_wrapper, value=0.98, schedule_target="confidence_level"
         )
         error_scheduler = tsa.constant_schedule(
-            optimizer_wrapper,
-            value=0.05,
-            schedule_target='percent_error_threshold'
+            optimizer_wrapper, value=0.05, schedule_target="percent_error_threshold"
         )
-        sync = tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
+        tsa.SynchronousSchedule([conf_scheduler, error_scheduler])
 
         stats = optimizer_wrapper.statistics()
 
         # Should reflect scheduled values
-        assert math.isclose(stats['confidence_level'], 0.98, rel_tol=0.01)
-        assert math.isclose(stats['percent_error_threshold'], 0.05, rel_tol=0.01)
+        assert math.isclose(stats["confidence_level"], 0.98, rel_tol=0.01)
+        assert math.isclose(stats["percent_error_threshold"], 0.05, rel_tol=0.01)
 
 
 # =============================================================================
@@ -644,7 +618,7 @@ class TestMakeMHTWithWarmupSchedule:
             confidence_level=0.95,
             percent_error_threshold=0.05,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         assert isinstance(result, tuple)
@@ -659,7 +633,7 @@ class TestMakeMHTWithWarmupSchedule:
             confidence_level=0.95,
             percent_error_threshold=0.05,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         assert isinstance(optimizer_wrapper, OptimizerWrapperMHT)
@@ -675,7 +649,7 @@ class TestMakeMHTWithWarmupSchedule:
             confidence_level=0.95,
             percent_error_threshold=0.05,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of warmup
@@ -699,18 +673,18 @@ class TestMakeMHTWithWarmupSchedule:
             confidence_level=0.95,
             percent_error_threshold=0.05,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of warmup
         for _ in range(100):
             scheduler.step()
-        conf_at_100 = scheduler.get_last_schedule('confidence_level')[0]
+        conf_at_100 = scheduler.get_last_schedule("confidence_level")[0]
 
         # Later in training
         for _ in range(400):
             scheduler.step()
-        conf_at_500 = scheduler.get_last_schedule('confidence_level')[0]
+        conf_at_500 = scheduler.get_last_schedule("confidence_level")[0]
 
         # Should be constant at target value
         assert math.isclose(conf_at_100, 0.95, rel_tol=0.01)
@@ -725,18 +699,18 @@ class TestMakeMHTWithWarmupSchedule:
             confidence_level=0.95,
             percent_error_threshold=0.05,
             num_training_steps=1000,
-            num_warmup_steps=100
+            num_warmup_steps=100,
         )
 
         # At end of warmup
         for _ in range(100):
             scheduler.step()
-        error_at_100 = scheduler.get_last_schedule('percent_error_threshold')[0]
+        error_at_100 = scheduler.get_last_schedule("percent_error_threshold")[0]
 
         # Later in training
         for _ in range(400):
             scheduler.step()
-        error_at_500 = scheduler.get_last_schedule('percent_error_threshold')[0]
+        error_at_500 = scheduler.get_last_schedule("percent_error_threshold")[0]
 
         # Should be constant at target value
         assert math.isclose(error_at_100, 0.05, rel_tol=0.01)
@@ -751,7 +725,7 @@ class TestMakeMHTWithWarmupSchedule:
             confidence_level=0.95,
             percent_error_threshold=0.50,  # Start very loose
             num_training_steps=10,
-            num_warmup_steps=2
+            num_warmup_steps=2,
         )
 
         # Early: loose threshold, should step easily with varied metrics
@@ -784,7 +758,7 @@ class TestDistributedMode:
     """Test distributed mode behavioral side effects."""
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_replicated_mode_steps_sooner_than_non_distributed(self):
         """Replicated mode steps sooner due to more samples per iteration."""
         world_size = 2
@@ -803,18 +777,27 @@ class TestDistributedMode:
             # Spawn workers
             mp.spawn(
                 mht_distributed_worker,
-                args=(world_size, metrics, confidence_level, percent_error_threshold, "replicated", tmpdir, 'localhost', '29508'),
+                args=(
+                    world_size,
+                    metrics,
+                    confidence_level,
+                    percent_error_threshold,
+                    "replicated",
+                    tmpdir,
+                    "localhost",
+                    "29508",
+                ),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect logs from all ranks
             logs = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    logs.append(data['log'])
+                    logs.append(data["log"])
 
             # All ranks must agree
             assert all(log == logs[0] for log in logs), "All ranks must agree"
@@ -827,15 +810,13 @@ class TestDistributedMode:
             optimizer = torch.optim.AdamW(params, lr=0.001, weight_decay=0.01)
             optimizer_wrapper_normal = OptimizerWrapperMHT(optimizer)
 
-            conf_scheduler = tsa.constant_schedule(
-                optimizer_wrapper_normal,
-                value=confidence_level,
-                schedule_target='confidence_level'
+            tsa.constant_schedule(
+                optimizer_wrapper_normal, value=confidence_level, schedule_target="confidence_level"
             )
-            error_scheduler = tsa.constant_schedule(
+            tsa.constant_schedule(
                 optimizer_wrapper_normal,
                 value=percent_error_threshold,
-                schedule_target='percent_error_threshold'
+                schedule_target="percent_error_threshold",
             )
 
             # Skip initialization step (running_mean == first_metric causes zero variance)
@@ -858,7 +839,7 @@ class TestDistributedMode:
             assert distributed_steps < num_steps_taken
 
     @pytest.mark.distributed
-    @pytest.mark.skipif(sys.platform == 'win32', reason="gloo not supported on Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="gloo not supported on Windows")
     def test_sharded_mode_behaves_like_non_distributed(self):
         """Sharded mode has same stepping behavior as non-distributed."""
         world_size = 2
@@ -876,18 +857,27 @@ class TestDistributedMode:
             # Spawn workers
             mp.spawn(
                 mht_distributed_worker,
-                args=(world_size, metrics, confidence_level, percent_error_threshold, "sharded", tmpdir, 'localhost', '29509'),
+                args=(
+                    world_size,
+                    metrics,
+                    confidence_level,
+                    percent_error_threshold,
+                    "sharded",
+                    tmpdir,
+                    "localhost",
+                    "29509",
+                ),
                 nprocs=world_size,
-                join=True
+                join=True,
             )
 
             # Collect logs from all ranks
             logs = []
             for rank in range(world_size):
-                output_file = Path(tmpdir) / f'rank_{rank}.json'
-                with open(output_file, 'r') as f:
+                output_file = Path(tmpdir) / f"rank_{rank}.json"
+                with open(output_file, "r") as f:
                     data = json.load(f)
-                    logs.append(data['log'])
+                    logs.append(data["log"])
 
             # All ranks must agree
             assert all(log == logs[0] for log in logs), "All ranks must agree"
@@ -900,15 +890,13 @@ class TestDistributedMode:
             optimizer = torch.optim.AdamW(params, lr=0.001, weight_decay=0.01)
             optimizer_wrapper_normal = OptimizerWrapperMHT(optimizer)
 
-            conf_scheduler = tsa.constant_schedule(
-                optimizer_wrapper_normal,
-                value=confidence_level,
-                schedule_target='confidence_level'
+            tsa.constant_schedule(
+                optimizer_wrapper_normal, value=confidence_level, schedule_target="confidence_level"
             )
-            error_scheduler = tsa.constant_schedule(
+            tsa.constant_schedule(
                 optimizer_wrapper_normal,
                 value=percent_error_threshold,
-                schedule_target='percent_error_threshold'
+                schedule_target="percent_error_threshold",
             )
 
             # Skip initialization step (running_mean == first_metric causes zero variance)
@@ -951,7 +939,7 @@ class TestIntegration:
             confidence_level=0.95,
             percent_error_threshold=0.10,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         # Training loop
@@ -968,7 +956,7 @@ class TestIntegration:
             loss.backward()
 
             # Step wrapper with metric (may or may not step optimizer)
-            stepped = optimizer_wrapper.step(metric=loss.item())
+            optimizer_wrapper.step(metric=loss.item())
 
             # Step scheduler
             scheduler.step()
@@ -978,7 +966,7 @@ class TestIntegration:
         assert optimizer_wrapper.num_batches == 100
 
         # Verify schedules stayed constant after warmup
-        final_conf = scheduler.get_last_schedule('confidence_level')[0]
+        final_conf = scheduler.get_last_schedule("confidence_level")[0]
         assert math.isclose(final_conf, 0.95, rel_tol=0.01)
 
     def test_state_dict_save_load_resume_training(self):
@@ -991,7 +979,7 @@ class TestIntegration:
             confidence_level=0.95,
             percent_error_threshold=0.10,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         # Train for 50 steps
@@ -1021,7 +1009,7 @@ class TestIntegration:
             confidence_level=0.95,
             percent_error_threshold=0.10,
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         optimizer_wrapper_new.load_state_dict(wrapper_state)
@@ -1053,7 +1041,7 @@ class TestIntegration:
             confidence_level=0.95,
             percent_error_threshold=0.05,  # Tight tolerance
             num_training_steps=100,
-            num_warmup_steps=10
+            num_warmup_steps=10,
         )
 
         # Phase 1: High variance metrics - should accumulate more

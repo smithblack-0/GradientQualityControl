@@ -5,10 +5,11 @@ Manages all state for optimizer wrappers, including wrapper-specific state
 and optimizer parameter group extensions.
 """
 
+from numbers import Number
+from typing import Any, Dict, List, Literal, Tuple
+
 import torch
 import torch_schedule_anything as tsa
-from typing import Any, Dict, List, Tuple, Literal
-from numbers import Number
 
 
 def _is_scalar_numeric(value: Any) -> bool:
@@ -28,7 +29,10 @@ class StateManagementSubsystem:
     Handles serialization and ScheduleAnything integration.
     """
 
-    def __init__(self, optimizer: torch.optim.Optimizer,):
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+    ):
         """
         Initialize state management subsystem.
 
@@ -38,7 +42,10 @@ class StateManagementSubsystem:
         self.optimizer = optimizer
         self.wrapper_states: Dict[str, Dict[str, Any]] = {}  # {name: {"value": ..., "flag": ...}}
 
-    def get_state(self, name: str,) -> Any:
+    def get_state(
+        self,
+        name: str,
+    ) -> Any:
         """
         Retrieve state value by name.
 
@@ -46,7 +53,8 @@ class StateManagementSubsystem:
             name: State variable name
 
         Returns:
-            Value from wrapper_states (without metadata) or list of values from optimizer param_groups
+            Value from wrapper_states (without metadata) or list of values from optimizer
+            param_groups
 
         Raises:
             KeyError: If name not found in either wrapper_states or optimizer param_groups
@@ -68,12 +76,19 @@ class StateManagementSubsystem:
         for value, params, group in regrouped:
             # Validate that value is numeric or scalar tensor
             if not _is_scalar_numeric(value):
-                raise TypeError(f"Optimizer parameter '{name}' is not a scalar numeric type or scalar tensor")
+                raise TypeError(
+                    f"Optimizer parameter '{name}' is not a scalar numeric type or scalar tensor"
+                )
             values.append(value)
 
         return values
 
-    def set_state(self, name: str, value: Any, flag: Literal["vital", "optional", "optimizer"],) -> None:
+    def set_state(
+        self,
+        name: str,
+        value: Any,
+        flag: Literal["vital", "optional", "optimizer"],
+    ) -> None:
         """
         Set state value with specified flag.
 
@@ -83,7 +98,8 @@ class StateManagementSubsystem:
             flag: One of "vital", "optional", "optimizer"
 
         Raises:
-            RuntimeError: If flag changes for existing name, or if name collides with optimizer param
+            RuntimeError: If flag changes for existing name, or if name collides with
+            optimizer param
         """
         if flag in ("vital", "optional"):
             # Check for collision with optimizer params
@@ -91,13 +107,17 @@ class StateManagementSubsystem:
                 # Verify it's in all groups (if in first group, likely in all)
                 in_all_groups = all(name in group for group in self.optimizer.param_groups)
                 if in_all_groups:
-                    raise RuntimeError(f"Cannot set wrapper state '{name}': name collides with optimizer parameter")
+                    raise RuntimeError(
+                        f"Cannot set wrapper state '{name}': name collides with optimizer parameter"
+                    )
 
             # Check if name exists with different flag
             if name in self.wrapper_states:
                 existing_flag = self.wrapper_states[name]["flag"]
                 if existing_flag != flag:
-                    raise RuntimeError(f"Cannot change flag for '{name}' from '{existing_flag}' to '{flag}'")
+                    raise RuntimeError(
+                        f"Cannot change flag for '{name}' from '{existing_flag}' to '{flag}'"
+                    )
 
             # Store with metadata
             self.wrapper_states[name] = {"value": value, "flag": flag}
@@ -105,14 +125,19 @@ class StateManagementSubsystem:
         elif flag == "optimizer":
             # Check if parameter already exists in optimizer
             if len(self.optimizer.param_groups) > 0 and name in self.optimizer.param_groups[0]:
-                raise RuntimeError(f"Cannot extend optimizer with '{name}': parameter already exists")
+                raise RuntimeError(
+                    f"Cannot extend optimizer with '{name}': parameter already exists"
+                )
 
             # Convert scalar tensors to float for tsa compatibility
             if isinstance(value, torch.Tensor):
                 if value.ndim == 0:  # Scalar tensor
                     value = value.item()
                 else:
-                    raise TypeError(f"Optimizer parameter '{name}' must be scalar, not tensor of shape {value.shape}")
+                    raise TypeError(
+                        f"Optimizer parameter '{name}' must be scalar, not tensor of "
+                        f"shape {value.shape}"
+                    )
 
             # Extend optimizer param_groups using ScheduleAnything
             tsa.extend_optimizer(self.optimizer, name, value, overwrite_values=False)
@@ -165,10 +190,13 @@ class StateManagementSubsystem:
         """
         return {
             "wrapper_states": self.wrapper_states,
-            "optimizer_states": self.optimizer.state_dict()
+            "optimizer_states": self.optimizer.state_dict(),
         }
 
-    def load_state_dict(self, state_dict: Dict[str, Any],) -> None:
+    def load_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+    ) -> None:
         """
         Restore state from state dictionary.
 

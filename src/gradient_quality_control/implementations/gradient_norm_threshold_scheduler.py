@@ -5,12 +5,15 @@ Steps optimizer when mean gradient norm falls below threshold.
 Implements adaptive gradient accumulation based on gradient quality.
 """
 
-from typing import Optional, Literal, Tuple
+from typing import Literal, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 import torch_schedule_anything as tsa
+
 from ..base import AbstractOptimizerWrapper
 from ..optimizer_utils import compute_grad_norm_from_optimizer
+
 
 class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     """
@@ -30,12 +33,12 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
     #
     # Read reads from the optimizer, while
     # merge is needed only when sharding.
-    def read_grad_norm_metric(self)->float:
+    def read_grad_norm_metric(self) -> float:
         """Reads the gradient norm off the optimizer"""
         return compute_grad_norm_from_optimizer(self.optimizer)
 
     @staticmethod
-    def merge_sharded_grad_norm(grad_norm: float)->float:
+    def merge_sharded_grad_norm(grad_norm: float) -> float:
         """Averages across sharded models"""
         # RMS averaging used, as it is the appropriate reduction
         # strategy given the built-in torch averaging. Note this
@@ -49,19 +52,19 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         grad_norm_tensor = torch.tensor([grad_norm], dtype=torch.float32)
 
         # Enter squared space, merge, then exit.
-        grad_norm_tensor = grad_norm_tensor ** 2
+        grad_norm_tensor = grad_norm_tensor**2
         dist.all_reduce(grad_norm_tensor, op=dist.ReduceOp.SUM)
         grad_norm_tensor = grad_norm_tensor / world_size
         grad_norm_tensor = torch.sqrt(grad_norm_tensor)
 
-        #Get item, and back to normal python.
+        # Get item, and back to normal python.
         return grad_norm_tensor.item()
 
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
         max_batch_draws: int = 64,
-        distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+        distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
     ):
         """
         Initialize GNTS wrapper.
@@ -81,12 +84,12 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         self._bind_metric(
             "grad_norm",
             metric_reader=self.read_grad_norm_metric,
-            replicated_merger=lambda x : x,
+            replicated_merger=lambda x: x,
             sharded_merger=self.merge_sharded_grad_norm,
-            normal_merger=lambda x: x
+            normal_merger=lambda x: x,
         )
 
-    def get_mean_grad_norm(self)->float:
+    def get_mean_grad_norm(self) -> float:
         """Gets the mean grad norm."""
         # The backend stepping system accumulates sum grad
         # norms, not mean grad norms, requiring compensation
@@ -96,7 +99,7 @@ class OptimizerWrapperGNTS(AbstractOptimizerWrapper):
         # a mean to sum then divide, rather than divide then
         # sum. We do exactly this.
         sum_grad_norm = self._get_metric("grad_norm")
-        return sum_grad_norm/self.num_draws
+        return sum_grad_norm / self.num_draws
 
     def step(self) -> bool:
         """
@@ -154,21 +157,15 @@ def make_gnts_with_cosine_annealing_schedule(
     """
     # Create wrapper
     wrapper = OptimizerWrapperGNTS(
-        optimizer,
-        max_batch_draws=max_batch_draws,
-        distributed_mode=distributed_mode
+        optimizer, max_batch_draws=max_batch_draws, distributed_mode=distributed_mode
     )
-
-    # Get initial values from optimizer
-    initial_lr = optimizer.param_groups[0]['lr']
-    initial_wd = optimizer.param_groups[0].get('weight_decay', 0.0)
 
     # LR schedule: warmup to constant
     lr_schedule = tsa.constant_with_warmup(
         wrapper,
         warmup_to_value=1.0,  # Multiplier keeps initial LR
         num_warmup_steps=num_warmup_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Threshold schedule: inverse warmup then cosine anneal
@@ -179,17 +176,17 @@ def make_gnts_with_cosine_annealing_schedule(
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
         warmup_multiplier=warmup_multiplier,
-        schedule_target='gradient_norm_threshold'
+        schedule_target="gradient_norm_threshold",
     )
 
     # Weight decay schedule: warmup then cosine anneal to zero
     wd_schedule = tsa.cosine_annealing_with_warmup(
         wrapper,
-        warmup_to_value=1.0,     # Multiplier keeps initial weight_decay
-        anneal_to_value=0.0,     # Anneal to zero
+        warmup_to_value=1.0,  # Multiplier keeps initial weight_decay
+        anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='weight_decay'
+        schedule_target="weight_decay",
     )
 
     # Combine schedules
@@ -229,22 +226,17 @@ def make_gnts_with_cosine_annealing_schedule_conventional_lr(
     """
     # Create wrapper
     wrapper = OptimizerWrapperGNTS(
-        optimizer,
-        max_batch_draws=max_batch_draws,
-        distributed_mode=distributed_mode
+        optimizer, max_batch_draws=max_batch_draws, distributed_mode=distributed_mode
     )
-
-    # Get initial values
-    initial_lr = optimizer.param_groups[0]['lr']
 
     # LR schedule: warmup then cosine anneal to zero
     lr_schedule = tsa.cosine_annealing_with_warmup(
         wrapper,
-        warmup_to_value=1.0,     # Multiplier keeps initial LR
-        anneal_to_value=0.0,     # Anneal to zero
+        warmup_to_value=1.0,  # Multiplier keeps initial LR
+        anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Threshold schedule: inverse warmup then cosine anneal
@@ -255,7 +247,7 @@ def make_gnts_with_cosine_annealing_schedule_conventional_lr(
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
         warmup_multiplier=warmup_multiplier,
-        schedule_target='gradient_norm_threshold'
+        schedule_target="gradient_norm_threshold",
     )
 
     # Combine schedules (no weight decay scheduling)

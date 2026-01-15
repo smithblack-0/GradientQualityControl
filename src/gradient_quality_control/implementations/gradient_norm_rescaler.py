@@ -5,12 +5,15 @@ Maintains consistent gradient magnitudes by rescaling to a target norm before ea
 Enables isogradient training - uniform gradient scale throughout training.
 """
 
-from typing import Optional, Literal, Tuple
+from typing import Literal, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 import torch_schedule_anything as tsa
+
 from ..base import AbstractOptimizerWrapper
 from ..optimizer_utils import compute_grad_norm_from_optimizer, multiply_optimizer_gradients
+
 
 class OptimizerWrapperGNR(AbstractOptimizerWrapper):
     """
@@ -35,7 +38,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         return compute_grad_norm_from_optimizer(self.optimizer)
 
     @staticmethod
-    def merge_sharded_grad_norm(grad_norm: float)->float:
+    def merge_sharded_grad_norm(grad_norm: float) -> float:
         """Averages across sharded models"""
         # RMS averaging used, as it is the appropriate reduction
         # strategy given the built-in torch averaging. Note this
@@ -49,18 +52,18 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         grad_norm_tensor = torch.tensor([grad_norm], dtype=torch.float32)
 
         # Enter squared space, merge, then exit.
-        grad_norm_tensor = grad_norm_tensor ** 2
+        grad_norm_tensor = grad_norm_tensor**2
         dist.all_reduce(grad_norm_tensor, op=dist.ReduceOp.SUM)
         grad_norm_tensor = grad_norm_tensor / world_size
         grad_norm_tensor = torch.sqrt(grad_norm_tensor)
 
-        #Get item, and back to normal python.
+        # Get item, and back to normal python.
         return grad_norm_tensor.item()
 
     def __init__(
         self,
         optimizer: torch.optim.Optimizer,
-        distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+        distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
     ):
         """
         Initialize GNR wrapper.
@@ -81,7 +84,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
             metric_reader=self.read_grad_norm_metric,
             replicated_merger=lambda x: x,  # Replicated: passthrough
             sharded_merger=self.merge_sharded_grad_norm,  # Sharded: RMS aggregation
-            normal_merger=lambda x: x
+            normal_merger=lambda x: x,
         )
 
     def step(self) -> bool:
@@ -97,7 +100,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         norm = self._get_metric("grad_norm")
         threshold = self._get_state("target_gradient_norm", aggregate_behavior="mean")
         if norm > 0:
-            rescale_multiplier = threshold/norm
+            rescale_multiplier = threshold / norm
         else:
             # Gradients of length 0 just do not step
             rescale_multiplier = 0.0
@@ -106,6 +109,7 @@ class OptimizerWrapperGNR(AbstractOptimizerWrapper):
         multiply_optimizer_gradients(self.optimizer, rescale_multiplier)
         self._take_optimizer_step()
         return True
+
 
 def make_gnr_with_cosine_annealing_schedule(
     optimizer: torch.optim.Optimizer,
@@ -135,17 +139,14 @@ def make_gnr_with_cosine_annealing_schedule(
         Tuple[OptimizerWrapperGNR, SynchronousSchedule]: Configured wrapper and schedule
     """
     # Create wrapper
-    wrapper = OptimizerWrapperGNR(
-        optimizer,
-        distributed_mode=distributed_mode
-    )
+    wrapper = OptimizerWrapperGNR(optimizer, distributed_mode=distributed_mode)
 
     # LR schedule: warmup to constant
     lr_schedule = tsa.constant_with_warmup(
         wrapper,
         warmup_to_value=1.0,  # Multiplier keeps initial LR
         num_warmup_steps=num_warmup_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Target norm schedule: cosine anneal from initial to final
@@ -155,17 +156,17 @@ def make_gnr_with_cosine_annealing_schedule(
         anneal_to_value=final_norm,
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='target_gradient_norm'
+        schedule_target="target_gradient_norm",
     )
 
     # Weight decay schedule: warmup then cosine anneal to zero
     wd_schedule = tsa.cosine_annealing_with_warmup(
         wrapper,
-        warmup_to_value=1.0,     # Multiplier keeps initial weight_decay
-        anneal_to_value=0.0,     # Anneal to zero
+        warmup_to_value=1.0,  # Multiplier keeps initial weight_decay
+        anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='weight_decay'
+        schedule_target="weight_decay",
     )
 
     # Combine schedules
@@ -202,19 +203,16 @@ def make_gnr_with_cosine_annealing_schedule_conventional_lr(
         Tuple[OptimizerWrapperGNR, SynchronousSchedule]: Configured wrapper and schedule
     """
     # Create wrapper
-    wrapper = OptimizerWrapperGNR(
-        optimizer,
-        distributed_mode=distributed_mode
-    )
+    wrapper = OptimizerWrapperGNR(optimizer, distributed_mode=distributed_mode)
 
     # LR schedule: warmup then cosine anneal to zero
     lr_schedule = tsa.cosine_annealing_with_warmup(
         wrapper,
-        warmup_to_value=1.0,     # Multiplier keeps initial LR
-        anneal_to_value=0.0,     # Anneal to zero
+        warmup_to_value=1.0,  # Multiplier keeps initial LR
+        anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Target norm schedule: cosine anneal from initial to final
@@ -224,7 +222,7 @@ def make_gnr_with_cosine_annealing_schedule_conventional_lr(
         anneal_to_value=final_norm,
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='target_gradient_norm'
+        schedule_target="target_gradient_norm",
     )
 
     # Combine schedules (no weight decay scheduling)

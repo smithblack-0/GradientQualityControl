@@ -4,7 +4,7 @@ DistributedMetricsManagementSubsystem implementation.
 Manages metric binding and resolution under distributed execution modes.
 """
 
-from typing import Any, Callable, Optional, Literal, Dict
+from typing import Any, Callable, Dict, Literal, Optional
 
 
 class DistributedMetricsManagementSubsystem:
@@ -15,7 +15,10 @@ class DistributedMetricsManagementSubsystem:
     configured distributed execution mode (None, replicated, or sharded).
     """
 
-    def __init__(self, distributed_state: Optional[Literal["replicated", "sharded"]],):
+    def __init__(
+        self,
+        distributed_state: Optional[Literal["replicated", "sharded"]],
+    ):
         """
         Initialize distributed metrics subsystem.
 
@@ -28,7 +31,8 @@ class DistributedMetricsManagementSubsystem:
         # Validate distributed_state
         if distributed_state not in (None, "replicated", "sharded"):
             raise ValueError(
-                f"distributed_state must be None, 'replicated', or 'sharded', got {distributed_state!r}"
+                f"distributed_state must be None, 'replicated', or 'sharded', "
+                f"got {distributed_state!r}"
             )
 
         self._distributed_mode = distributed_state
@@ -83,7 +87,12 @@ class DistributedMetricsManagementSubsystem:
             "normal_merger": normal_merger,
         }
 
-    def get_metric(self, name: str, *args, **kwargs,) -> Any:
+    def get_metric(
+        self,
+        name: str,
+        *args,
+        **kwargs,
+    ) -> Any:
         """
         Resolve a metric value based on distributed mode.
 

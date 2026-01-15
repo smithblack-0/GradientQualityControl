@@ -7,7 +7,12 @@
       "Bash(wsl:*)",
       "Bash(wsl.exe -d Ubuntu-24.04 python3:*)",
       "Bash(wsl.exe -d Ubuntu-24.04 -- bash -c \"python3 --version\")",
-      "Bash(wsl.exe:*)"
+      "Bash(wsl.exe:*)",
+      "Bash(source .venv/Scripts/activate)",
+      "Bash(ruff check:*)",
+      "Bash(.venvScriptsactivate)",
+      "Bash(where:*)",
+      "Bash(py:*)"
     ]
   }
 }

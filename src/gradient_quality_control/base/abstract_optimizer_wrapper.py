@@ -5,14 +5,15 @@ User-facing class providing convenient constructor that automatically constructs
 and wires all subsystems.
 """
 
-import torch
-from typing import Optional, Literal
+from typing import Literal, Optional
 
-from .orchestrator import OrchestratorMainSystem
-from .state_management import StateManagementSubsystem
+import torch
+
 from .distributed_metrics import DistributedMetricsManagementSubsystem
 from .gradient_accumulation import GradientAccumulationStepSubsystem
+from .orchestrator import OrchestratorMainSystem
 from .reporting import ReportingSubsystem
+from .state_management import StateManagementSubsystem
 
 
 class AbstractOptimizerWrapper(OrchestratorMainSystem):
@@ -66,7 +67,8 @@ class AbstractOptimizerWrapper(OrchestratorMainSystem):
         # Check for distributed execution without distributed_mode
         if torch.distributed.is_initialized() and distributed_mode is None:
             raise RuntimeError(
-                "Detected distributed execution (torch.distributed is initialized) but distributed_mode is None. "
+                "Detected distributed execution (torch.distributed is initialized) but "
+                "distributed_mode is None. "
                 "Please specify distributed_mode='replicated' or 'sharded'."
             )
 

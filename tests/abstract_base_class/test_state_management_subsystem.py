@@ -22,7 +22,6 @@ import torch.nn as nn
 
 from src.gradient_quality_control.base.state_management import StateManagementSubsystem
 
-
 # =============================================================================
 # Test Helpers and Fixtures
 # =============================================================================
@@ -39,10 +38,12 @@ def create_multigroup_optimizer(lr1=0.01, lr2=0.001, wd1=0.0001, wd2=0.0002):
     params1 = [nn.Parameter(torch.randn(10, 5))]
     params2 = [nn.Parameter(torch.randn(5, 2))]
 
-    return torch.optim.SGD([
-        {'params': params1, 'lr': lr1, 'weight_decay': wd1},
-        {'params': params2, 'lr': lr2, 'weight_decay': wd2}
-    ])
+    return torch.optim.SGD(
+        [
+            {"params": params1, "lr": lr1, "weight_decay": wd1},
+            {"params": params2, "lr": lr2, "weight_decay": wd2},
+        ]
+    )
 
 
 def create_uniform_multigroup_optimizer(lr=0.01, weight_decay=0.0001):
@@ -50,10 +51,12 @@ def create_uniform_multigroup_optimizer(lr=0.01, weight_decay=0.0001):
     params1 = [nn.Parameter(torch.randn(10, 5))]
     params2 = [nn.Parameter(torch.randn(5, 2))]
 
-    return torch.optim.SGD([
-        {'params': params1, 'lr': lr, 'weight_decay': weight_decay},
-        {'params': params2, 'lr': lr, 'weight_decay': weight_decay}
-    ])
+    return torch.optim.SGD(
+        [
+            {"params": params1, "lr": lr, "weight_decay": weight_decay},
+            {"params": params2, "lr": lr, "weight_decay": weight_decay},
+        ]
+    )
 
 
 # =============================================================================
@@ -129,7 +132,6 @@ class TestGetStateOptimizerParams:
         assert isinstance(lr, list)
         assert lr == [0.123]
 
-
     def test_get_state_default_returns_list_for_uniform_multigroup(self):
         """get_state() default returns list even when all groups have same value."""
         optimizer = create_uniform_multigroup_optimizer(lr=0.01)
@@ -172,7 +174,7 @@ class TestGetStateErrors:
         """get_state() throws error for non-numeric optimizer params."""
         optimizer = create_simple_optimizer()
         # Manually add non-numeric param to test filtering
-        optimizer.param_groups[0]['string_param'] = "not_a_number"
+        optimizer.param_groups[0]["string_param"] = "not_a_number"
 
         state_mgr = StateManagementSubsystem(optimizer)
 
@@ -187,9 +189,11 @@ class TestGetStateErrors:
         with pytest.raises(TypeError):
             state_mgr.get_state("params")
 
+
 # =============================================================================
 # Set State Test Suite - tests that set_state() stores values with different flags
 # =============================================================================
+
 
 class TestSetStateBasic:
     """Test set_state() basic storage functionality."""
@@ -361,7 +365,7 @@ class TestShowState:
         state_mgr.set_state("vital_metric", 1.0, "vital")
 
         result = state_mgr.show_state()
-        result_dict = {key : value for key, value in result}
+        result_dict = {key: value for key, value in result}
 
         assert "vital_metric" in result_dict
         assert result_dict["vital_metric"] == "vital"
@@ -374,7 +378,7 @@ class TestShowState:
         state_mgr.set_state("optional_metric", 2.0, "optional")
 
         result = state_mgr.show_state()
-        result_dict = {key : value for key, value in result}
+        result_dict = {key: value for key, value in result}
 
         assert "optional_metric" in result_dict
         assert result_dict["optional_metric"] == "optional"
@@ -385,7 +389,7 @@ class TestShowState:
         state_mgr = StateManagementSubsystem(optimizer)
 
         result = state_mgr.show_state()
-        result_dict = {key : value for key, value in result}
+        result_dict = {key: value for key, value in result}
 
         assert "lr" in result_dict
         assert result_dict["lr"] == "optimizer"
@@ -409,7 +413,7 @@ class TestShowState:
         state_mgr.set_state("custom_param", 1.5, "optimizer")
 
         result = state_mgr.show_state()
-        result_dict = {key : value for key, value in result}
+        result_dict = {key: value for key, value in result}
 
         assert "custom_param" in result_dict
         assert result_dict["custom_param"] == "optimizer"
@@ -418,12 +422,12 @@ class TestShowState:
         """show_state() filters out non-numeric optimizer params."""
         optimizer = create_simple_optimizer()
         # Add non-numeric param
-        optimizer.param_groups[0]['string_param'] = "not_numeric"
+        optimizer.param_groups[0]["string_param"] = "not_numeric"
 
         state_mgr = StateManagementSubsystem(optimizer)
 
         result = state_mgr.show_state()
-        result_dict = {key : value for key, value in result}
+        result_dict = {key: value for key, value in result}
 
         # Should not include non-numeric param
         assert "string_param" not in result_dict
@@ -432,12 +436,12 @@ class TestShowState:
         """show_state() filters out non-numeric optimizer params."""
         optimizer = create_simple_optimizer()
         # Add non-numeric param
-        optimizer.param_groups[0]['1d_tensor_param'] = torch.tensor([3.0, 5.0, 7.0])
+        optimizer.param_groups[0]["1d_tensor_param"] = torch.tensor([3.0, 5.0, 7.0])
 
         state_mgr = StateManagementSubsystem(optimizer)
 
         result = state_mgr.show_state()
-        result_dict = {key : value for key, value in result}
+        result_dict = {key: value for key, value in result}
 
         # Should not include non-numeric param
         assert "1d_tensor_param" not in result_dict
@@ -446,7 +450,7 @@ class TestShowState:
         """show_state() excludes optimizer params not shared across all groups."""
         optimizer = create_multigroup_optimizer()
         # Add param to only first group
-        optimizer.param_groups[0]['group_specific_param'] = 0.5
+        optimizer.param_groups[0]["group_specific_param"] = 0.5
 
         state_mgr = StateManagementSubsystem(optimizer)
 
@@ -472,7 +476,6 @@ class TestSerialization:
 
         state = state_mgr.state_dict()
         assert isinstance(state, dict)
-
 
     def test_roundtrip_preserves_vital_wrapper_states(self):
         """state_dict/load_state_dict preserves vital wrapper states."""
@@ -512,7 +515,7 @@ class TestSerialization:
         state_mgr1 = StateManagementSubsystem(optimizer1)
 
         # Modify optimizer state
-        optimizer1.param_groups[0]['lr'] = 0.123
+        optimizer1.param_groups[0]["lr"] = 0.123
 
         state = state_mgr1.state_dict()
 

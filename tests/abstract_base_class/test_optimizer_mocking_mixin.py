@@ -13,11 +13,11 @@ Test organization:
 - __setattr__ during initialization sets locally
 - __setattr__ after initialization forwards or raises errors
 """
+
 import pytest
 import torch
 
 from src.gradient_quality_control.base.optimizer_mocking import OptimizerMockingMixin
-
 
 # =============================================================================
 # Test Helpers and Fixtures
@@ -138,7 +138,8 @@ class TestGetattribute:
 
 
 # =============================================================================
-# Setattr During Init Test Suite - tests that __setattr__ during initialization sets attributes locally
+# Setattr During Init Test Suite - tests that __setattr__ during initialization sets attributes
+# locally
 # =============================================================================
 
 
@@ -155,7 +156,7 @@ class TestSetattrDuringInit:
         wrapper.init_time_attr = "test"
 
         # Should be stored on wrapper
-        assert hasattr(wrapper, 'init_time_attr')
+        assert hasattr(wrapper, "init_time_attr")
         assert wrapper.init_time_attr == "test"
 
     def test_setattr_during_init_allows_multiple_attributes(self):
@@ -174,7 +175,8 @@ class TestSetattrDuringInit:
 
 
 # =============================================================================
-# Setattr After Init Test Suite - tests that __setattr__ after initialization forwards or raises errors
+# Setattr After Init Test Suite - tests that __setattr__ after initialization forwards or
+# raises errors
 # =============================================================================
 
 
@@ -209,7 +211,7 @@ class TestSetattrAfterInit:
         wrapper.new_custom_attr = "forwarded_value"
 
         # Should be set on optimizer, not wrapper
-        assert hasattr(optimizer, 'new_custom_attr')
+        assert hasattr(optimizer, "new_custom_attr")
         assert optimizer.new_custom_attr == "forwarded_value"
 
     def test_setattr_after_init_forwards_optimizer_attribute_modification(self):
@@ -232,7 +234,7 @@ class TestSetattrAfterInit:
         wrapper = MinimalMockedWrapper(optimizer)
 
         # Should be able to modify optimizer attributes like param_groups
-        new_groups = [{'params': [torch.nn.Parameter(torch.randn(3, 3))], 'lr': 0.1}]
+        new_groups = [{"params": [torch.nn.Parameter(torch.randn(3, 3))], "lr": 0.1}]
         wrapper.param_groups = new_groups
 
         # Should be set on optimizer
@@ -268,7 +270,7 @@ class TestIntegration:
         assert wrapper.wrapper_attribute == "test_value"
 
         # Optimizer shouldn't have wrapper's attributes
-        assert not hasattr(optimizer, 'wrapper_attribute')
+        assert not hasattr(optimizer, "wrapper_attribute")
 
     def test_initialization_phase_then_finalization_phase(self):
         """Wrapper allows setting attributes during init, then blocks after finalization."""

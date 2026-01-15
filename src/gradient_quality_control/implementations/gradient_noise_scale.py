@@ -5,12 +5,14 @@ Adaptive batch sizing based on gradient noise-to-signal ratio.
 Steps when gradient variance indicates sufficient signal quality.
 """
 
-from typing import Optional, Literal, Tuple, List
+from typing import List, Literal, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 import torch_schedule_anything as tsa
+
 from ..base import AbstractOptimizerWrapper
-from ..optimizer_utils import setup_norm_logging_in_optimizer, get_last_grad_norm_from_optimizer
+from ..optimizer_utils import get_last_grad_norm_from_optimizer, setup_norm_logging_in_optimizer
 
 
 class OptimizerWrapperGNS(AbstractOptimizerWrapper):
@@ -39,14 +41,13 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         # Note we used a specialized system that caches the
         # grad norm value as it goes by, so that we can correctly
         # measure the per batch grad norm rather than the overall
-        #one.
+        # one.
         return get_last_grad_norm_from_optimizer(self.optimizer)
 
     @staticmethod
-    def merge_common_metrics(metric: float)->List[float]:
+    def merge_common_metrics(metric: float) -> List[float]:
         """Adds a list to anything going through"""
         return [metric]
-
 
     @staticmethod
     def merge_independent_metrics(metric: float) -> List[float]:
@@ -65,7 +66,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         self,
         optimizer: torch.optim.Optimizer,
         max_batch_draws: int = 64,
-        distributed_mode: Optional[Literal["replicated", "sharded"]] = None
+        distributed_mode: Optional[Literal["replicated", "sharded"]] = None,
     ):
         """
         Initialize GNS wrapper.
@@ -90,9 +91,10 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
             "grad_norms",
             metric_reader=self.read_grad_norm_metric,
             replicated_merger=self.merge_independent_metrics,  # Gather all metrics
-            sharded_merger=self.merge_common_metrics,      # RMS aggregation
-            normal_merger=self.merge_common_metrics
+            sharded_merger=self.merge_common_metrics,  # RMS aggregation
+            normal_merger=self.merge_common_metrics,
         )
+
     def update_state(self):
         """Updates the history"""
         history = self._get_state("history")
@@ -113,8 +115,7 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         variance = torch.var(history_tensor)
 
         # Compute GNS
-        return variance/ (mean_squared + 1e-8)
-
+        return variance / (mean_squared + 1e-8)
 
     def step(self) -> bool:
         """
@@ -126,7 +127,6 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
         self._batch_received()
         self.update_state()
 
-
         tolerance = self._get_state("noise_tolerance", aggregate_behavior="min")
         gns = self.compute_approximate_gns()
         if gns <= self.num_draws * tolerance or self.num_draws >= self.max_draws:
@@ -134,7 +134,6 @@ class OptimizerWrapperGNS(AbstractOptimizerWrapper):
             self.clear_history()
             return True
         return False
-
 
 
 def make_gns_with_cosine_annealing_schedule(
@@ -152,7 +151,8 @@ def make_gns_with_cosine_annealing_schedule(
 
     Schedule Configuration:
         - Learning rate: Warmup then cosine anneal to zero
-        - Noise tolerance: Inverse warmup then cosine anneal from initial_tolerance to final_tolerance
+        - Noise tolerance: Inverse warmup then cosine anneal from initial_tolerance to
+          final_tolerance
 
     Args:
         optimizer: Configured PyTorch optimizer
@@ -169,19 +169,17 @@ def make_gns_with_cosine_annealing_schedule(
     """
     # Create wrapper
     wrapper = OptimizerWrapperGNS(
-        optimizer,
-        max_batch_draws=max_batch_draws,
-        distributed_mode=distributed_mode
+        optimizer, max_batch_draws=max_batch_draws, distributed_mode=distributed_mode
     )
 
     # LR schedule: warmup then cosine anneal
     lr_schedule = tsa.cosine_annealing_with_warmup(
         wrapper,
-        warmup_to_value=1.0,     # Multiplier keeps initial LR
-        anneal_to_value=0.0,     # Anneal to zero
+        warmup_to_value=1.0,  # Multiplier keeps initial LR
+        anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Noise tolerance schedule: inverse warmup then cosine anneal
@@ -192,7 +190,7 @@ def make_gns_with_cosine_annealing_schedule(
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
         warmup_multiplier=warmup_multiplier,
-        schedule_target='noise_tolerance'
+        schedule_target="noise_tolerance",
     )
 
     # Combine schedules
@@ -229,19 +227,17 @@ def make_gns_default(
     """
     # Create wrapper
     wrapper = OptimizerWrapperGNS(
-        optimizer,
-        max_batch_draws=max_batch_draws,
-        distributed_mode=distributed_mode
+        optimizer, max_batch_draws=max_batch_draws, distributed_mode=distributed_mode
     )
 
     # LR schedule: warmup then cosine anneal
     lr_schedule = tsa.cosine_annealing_with_warmup(
         wrapper,
-        warmup_to_value=1.0,     # Multiplier keeps initial LR
-        anneal_to_value=0.0,     # Anneal to zero
+        warmup_to_value=1.0,  # Multiplier keeps initial LR
+        anneal_to_value=0.0,  # Anneal to zero
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
-        schedule_target='lr'
+        schedule_target="lr",
     )
 
     # Noise tolerance schedule: inverse warmup to constant
@@ -249,7 +245,7 @@ def make_gns_default(
         wrapper,
         warmup_to_value=tolerance,
         num_warmup_steps=num_warmup_steps,
-        schedule_target='noise_tolerance'
+        schedule_target="noise_tolerance",
     )
 
     # Combine schedules
